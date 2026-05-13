@@ -1,6 +1,7 @@
 import { useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 import type { WikiPage } from "../types";
 
 export default function WikiDetail() {
@@ -24,11 +25,7 @@ export default function WikiDetail() {
       </div>
 
       {page.content && (
-        <div className="prose prose-gray max-w-none">
-          <pre className="whitespace-pre-wrap text-sm bg-gray-50 p-6 rounded-lg border border-gray-200">
-            {page.content}
-          </pre>
-        </div>
+        <MarkdownRenderer content={page.content} kbSlug={kbSlug} />
       )}
 
       {page.outgoing_links && page.outgoing_links.length > 0 && (

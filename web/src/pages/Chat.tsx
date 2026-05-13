@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router";
 import { api } from "../api/client";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 import type { ChatMessage } from "../types";
 
 interface QueryResponse {
@@ -61,7 +62,9 @@ export default function Chat() {
             <div className="flex justify-start">
               <div className="max-w-[70%] px-4 py-3 bg-gray-100 rounded-2xl rounded-bl-sm">
                 {msg.answer ? (
-                  <pre className="whitespace-pre-wrap text-sm text-gray-800 font-sans">{msg.answer}</pre>
+                  <div className="text-sm text-gray-800">
+                    <MarkdownRenderer content={msg.answer} kbSlug={kbSlug} />
+                  </div>
                 ) : (
                   <p className="text-sm text-red-500">查询失败</p>
                 )}
