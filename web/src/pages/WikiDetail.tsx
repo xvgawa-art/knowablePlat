@@ -34,6 +34,9 @@ export default function WikiDetail() {
     setEditing(true);
   };
 
+  const hasOutgoing = page.outgoing_links && page.outgoing_links.length > 0;
+  const hasIncoming = page.incoming_links && page.incoming_links.length > 0;
+
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
@@ -78,22 +81,49 @@ export default function WikiDetail() {
         </div>
       ) : (
         <>
-          {page.content && <MarkdownRenderer content={page.content} kbSlug={kbSlug} />}
+          {page.content ? (
+            <MarkdownRenderer content={page.content} kbSlug={kbSlug} />
+          ) : (
+            <div className="text-center py-12 text-gray-400">
+              <p>此页面暂无内容</p>
+            </div>
+          )}
 
-          {page.outgoing_links && page.outgoing_links.length > 0 && (
-            <div className="mt-8">
-              <h2 className="text-lg font-semibold mb-2">相关页面</h2>
-              <div className="flex flex-wrap gap-2">
-                {page.outgoing_links.map((link) => (
-                  <Link
-                    key={link}
-                    to={`/kb/${kbSlug}/wiki/${link}`}
-                    className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100"
-                  >
-                    {link}
-                  </Link>
-                ))}
-              </div>
+          {(hasOutgoing || hasIncoming) && (
+            <div className="mt-8 space-y-4">
+              {hasOutgoing && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-2">相关页面</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {page.outgoing_links!.map((link) => (
+                      <Link
+                        key={link}
+                        to={`/kb/${kbSlug}/wiki/${link}`}
+                        className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100"
+                      >
+                        {link}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {hasIncoming && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-2">反向链接</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {page.incoming_links!.map((link) => (
+                      <Link
+                        key={link}
+                        to={`/kb/${kbSlug}/wiki/${link}`}
+                        className="px-3 py-1 text-sm bg-purple-50 text-purple-700 rounded-full hover:bg-purple-100"
+                      >
+                        {link}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>
