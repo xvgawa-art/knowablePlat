@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
 from app.api.knowledge_bases import router as kb_router
+from app.api.notifications import router as notif_router
 from app.api.sources import router as sources_router
 from app.api.wiki import router as wiki_router
 from app.config import ensure_dirs
@@ -32,6 +33,7 @@ app.include_router(auth_router)
 app.include_router(kb_router)
 app.include_router(sources_router)
 app.include_router(wiki_router)
+app.include_router(notif_router)
 
 
 @app.get("/api/health")

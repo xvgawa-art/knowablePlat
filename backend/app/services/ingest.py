@@ -7,10 +7,12 @@ import structlog
 
 from app.models.entity import EntityType
 from app.models.log import ActionEnum
+from app.models.notification import TriggerType
 from app.models.wiki_page import WikiPage, WikiPageType
 from app.repositories.activity_log import ActivityLogRepository
 from app.repositories.entity import EntityRepository
 from app.repositories.knowledge_base import KnowledgeBaseRepository
+from app.repositories.notification import NotificationRepository
 from app.repositories.source import SourceRepository
 from app.repositories.wiki_page import WikiPageRepository
 from app.services.llm import generate
@@ -143,6 +145,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
             wiki_repo = WikiPageRepository(session)
             entity_repo = EntityRepository(session)
             log_repo = ActivityLogRepository(session)
+            notif_repo = NotificationRepository(session)
 
             source = await source_repo.get_by_id(source_id)
             if source is None:
@@ -286,6 +289,17 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     action=ActionEnum.ingest,
                     target=source_slug,
                     details={"title": title, "source_url": source.url},
+                )
+
+                # Step 8: Create notification
+                key_points = extracted.get("key_points", [])
+                await notif_repo.create(
+                    kb_id=kb.id,
+                    source_id=source.id,
+                    trigger_type=TriggerType.manual,
+                    title=f"新来源已摄入：{title}",
+                    summary=extracted.get("summary", "")[:500],
+                    related_points=key_points[:5] if key_points else None,
                 )
 
                 # Mark source as completed
