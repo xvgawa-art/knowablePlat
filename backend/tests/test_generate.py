@@ -172,3 +172,23 @@ class TestGenerateAPI:
 
         get_resp = await client.get(f"/api/generate/{doc_id}")
         assert get_resp.status_code == 404
+
+
+class TestRetrieveKnowledge:
+    async def test_retrieve_knowledge_nonexistent_kb_ids(self):
+        from app.services.generate import retrieve_knowledge
+
+        result = await retrieve_knowledge([str(uuid.uuid4())], "test topic")
+        assert "test topic" in result
+
+    async def test_retrieve_knowledge_empty_kb_ids(self):
+        from app.services.generate import retrieve_knowledge
+
+        result = await retrieve_knowledge([], "test topic")
+        assert "test topic" in result
+
+    async def test_retrieve_knowledge_invalid_uuid(self):
+        from app.services.generate import retrieve_knowledge
+
+        result = await retrieve_knowledge(["not-a-uuid"], "test topic")
+        assert "test topic" in result
