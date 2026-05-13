@@ -1,24 +1,24 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RssFeedCreate(BaseModel):
-    name: str
-    url: str
-    feed_type: str = "rss"
-    poll_interval: int = 60
+    name: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1, max_length=2000)
+    feed_type: str = Field(default="rss", pattern=r"^(rss|atom)$")
+    poll_interval: int = Field(default=60, ge=5, le=1440)
     filter_keywords: list[str] | None = None
     filter_authors: list[str] | None = None
     filter_categories: list[str] | None = None
 
 
 class RssFeedUpdate(BaseModel):
-    name: str | None = None
-    url: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    url: str | None = Field(default=None, min_length=1, max_length=2000)
     is_active: bool | None = None
-    poll_interval: int | None = None
+    poll_interval: int | None = Field(default=None, ge=5, le=1440)
     filter_keywords: list[str] | None = None
     filter_authors: list[str] | None = None
     filter_categories: list[str] | None = None
