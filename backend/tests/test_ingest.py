@@ -129,3 +129,110 @@ async def test_embed_wiki_page_handles_failure() -> None:
     with patch("app.services.ingest.embed", new_callable=AsyncMock, side_effect=RuntimeError("API error")):
         await _embed_wiki_page(mock_repo, mock_page)
         mock_repo.update_embedding.assert_not_called()
+
+
+async def test_slugify_special_chars() -> None:
+    from app.services.ingest import _slugify
+
+    assert _slugify("Hello___World") == "hello-world"
+    assert _slugify("---leading-dashes") == "leading-dashes"
+    assert _slugify("trailing-dashes---") == "trailing-dashes"
+    assert _slugify("multiple   spaces") == "multiple-spaces"
+    assert _slugify("!@#$%^&*()") == "untitled"
+    assert _slugify("中文/英文\\混合") == "中文英文混合"
+
+
+async def test_synthesize_wiki_page_with_existing_pages() -> None:
+    from app.services.ingest import _synthesize_wiki_page
+
+    existing = [{"title": "已有页面", "slug": "existing-page"}]
+    with patch(
+        "app.services.ingest.generate", new_callable=AsyncMock, return_value="# 新页面\n\n与已有页面关联"
+    ) as mock_gen:
+        result = await _synthesize_wiki_page("test-kb", "标题", "摘要", {"title": "标题"}, existing_pages=existing)
+        assert "新页面" in result
+        call_args = mock_gen.call_args[0][0]
+        assert "已有页面" in call_args
+
+
+async def test_synthesize_wiki_page_with_usage() -> None:
+    from app.services.ingest import _synthesize_wiki_page_with_usage
+    from app.services.llm import LLMResponse
+
+    with patch(
+        "app.services.ingest.generate_with_usage",
+        new_callable=AsyncMock,
+        return_value=LLMResponse("# 测试\n\n内容", 50, 100),
+    ):
+        content, tokens = await _synthesize_wiki_page_with_usage("test-kb", "标题", "摘要", {"title": "标题"})
+        assert "# 测试" in content
+        assert tokens == 150
+
+
+async def test_find_cross_references_invalid_json() -> None:
+    from app.services.ingest import _find_cross_references
+
+    with patch("app.services.ingest.generate", new_callable=AsyncMock, return_value="not valid json at all"):
+        result = await _find_cross_references("test-kb", "新页面", "内容", [{"title": "A", "slug": "slug1"}])
+        assert result == []
+
+
+async def test_find_cross_references_non_list_json() -> None:
+    from app.services.ingest import _find_cross_references
+
+    with patch("app.services.ingest.generate", new_callable=AsyncMock, return_value='{"key": "value"}'):
+        result = await _find_cross_references("test-kb", "新页面", "内容", [{"title": "A", "slug": "slug1"}])
+        assert result == []
+
+
+async def test_find_cross_references_with_usage() -> None:
+    from app.services.ingest import _find_cross_references_with_usage
+    from app.services.llm import LLMResponse
+
+    with patch(
+        "app.services.ingest.generate_with_usage",
+        new_callable=AsyncMock,
+        return_value=LLMResponse('["slug-a", "slug-b"]', 20, 40),
+    ):
+        slugs, tokens = await _find_cross_references_with_usage(
+            "test-kb", "新页面", "内容", [{"title": "A", "slug": "slug-a"}]
+        )
+        assert slugs == ["slug-a", "slug-b"]
+        assert tokens == 60
+
+
+async def test_find_cross_references_with_usage_empty() -> None:
+    from app.services.ingest import _find_cross_references_with_usage
+
+    slugs, tokens = await _find_cross_references_with_usage("test-kb", "新页面", "内容", [])
+    assert slugs == []
+    assert tokens == 0
+
+
+async def test_build_index_content_multiple_types() -> None:
+    from app.models.wiki_page import WikiPage, WikiPageType
+    from app.services.ingest import _build_index_content
+
+    pages = [
+        WikiPage(slug="src-1", title="来源1", page_type=WikiPageType.source, kb_id=uuid.uuid4()),
+        WikiPage(slug="ent-1", title="实体1", page_type=WikiPageType.entity, kb_id=uuid.uuid4()),
+        WikiPage(slug="con-1", title="概念1", page_type=WikiPageType.concept, kb_id=uuid.uuid4()),
+        WikiPage(slug="cmp-1", title="对比1", page_type=WikiPageType.comparison, kb_id=uuid.uuid4()),
+        WikiPage(slug="tool-1", title="工具1", page_type=WikiPageType.tool, kb_id=uuid.uuid4()),
+        WikiPage(slug="cat-1", title="分类1", page_type=WikiPageType.tool_category, kb_id=uuid.uuid4()),
+    ]
+    result = await _build_index_content(pages)
+    assert "来源摘要" in result
+    assert "实体" in result
+    assert "概念" in result
+    assert "对比分析" in result
+    assert "工具" in result
+    assert "工具分类" in result
+
+
+async def test_build_index_content_empty() -> None:
+    from app.services.ingest import _build_index_content
+
+    result = await _build_index_content([])
+    assert "知识库目录" in result
+    assert "[[" not in result
