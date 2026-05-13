@@ -232,9 +232,6 @@ knowableplat/
 1. **读取索引** — LLM 先读 `wiki/{kb_slug}/index.md` 找到相关页面
 2. **深入阅读** — 读取**同一知识库内**与问题相关的具体 wiki 页面
 3. **综合回答** — 生成带 `[[wikilink]]` 引用的回答
-4. **可选：归档回答** — 如果回答有价值（对比、分析），保存为新的 wiki 页面
-
-**好的回答可以回存到 wiki。** 你的探索在知识库中复利积累，和摄入的来源一样。
 
 ### Generate（知识生成）流水线
 
@@ -284,7 +281,7 @@ LLM 擅长建议新的调查问题和新的来源。这让 wiki 在增长过程�
 ```markdown
 ---
 title: 页面标题
-type: source | entity | concept | comparison | answer
+type: source | entity | concept | comparison
 created: 2026-05-13
 updated: 2026-05-13
 sources:
@@ -392,7 +389,7 @@ tags: [标签1, 标签2]
 | kb_id | UUID, FK | 所属知识库 |
 | slug | string | URL 友好标识符（同一知识库内唯一） |
 | title | string | 页面标题 |
-| type | enum | source / entity / concept / comparison / answer |
+| type | enum | source / entity / concept / comparison |
 | content | text | Markdown 内容 |
 | frontmatter | JSON | 解析后的 YAML frontmatter |
 | source_ids | UUID[] | 关联的来源文档 |
@@ -861,15 +858,14 @@ pytest --cov=app tests/
 15. 全文搜索（PostgreSQL tsvector）
 16. 向量搜索（pgvector 语义搜索）
 17. 图谱可视化（wiki 页面关系）
-18. 回答归档（保存优质回答为 wiki 页面）
 
 ### 第四阶段 — 完善 & 扩展
-19. Wiki 健康检查（lint）自动化
-20. 页面间矛盾检测
-21. 批量摄入（多个 URL）
-22. 浏览器扩展（快速保存文章）
-23. Obsidian 兼容导出
-24. 多用户支持
+18. Wiki 健康检查（lint）自动化
+19. 页面间矛盾检测
+20. 批量摄入（多个 URL）
+21. 浏览器扩展（快速保存文章）
+22. Obsidian 兼容导出
+23. 多用户支持
 
 ---
 
