@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import * as d3 from "d3";
@@ -47,99 +47,54 @@ export default function GraphView() {
     enabled: !!kbSlug,
   });
 
-  const cleanup = useCallback(() => {
-    simulationRef.current?.stop();
-    simulationRef.current = null;
-  }, []);
-
   useEffect(() => {
     if (!graph || graph.nodes.length === 0 || !containerRef.current) return;
-
     const container = containerRef.current;
     const width = container.clientWidth;
     const height = container.clientHeight;
 
     d3.select(container).select("svg").remove();
-    const svg = d3.select(container).append("svg");
-    svg.attr("width", width).attr("height", height);
-
+    const svg = d3.select(container).append("svg").attr("width", width).attr("height", height);
     const g = svg.append("g");
 
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.3, 4])
-      .on("zoom", (event) => {
-        g.attr("transform", event.transform);
-      });
-    svg.call(zoom);
+    svg.call(d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.3, 4])
+      .on("zoom", (event) => g.attr("transform", event.transform)));
 
     const nodes: SimNode[] = graph.nodes.map((n) => ({ ...n }));
     const edges: SimEdge[] = graph.edges.map((e) => ({ ...e }));
 
-    simulationRef.current = d3
-      .forceSimulation<SimNode>(nodes)
-      .force(
-        "link",
-        d3.forceLink<SimNode, SimEdge>(edges).id((d) => d.id).distance(100),
-      )
+    simulationRef.current = d3.forceSimulation<SimNode>(nodes)
+      .force("link", d3.forceLink<SimNode, SimEdge>(edges).id((d) => d.id).distance(100))
       .force("charge", d3.forceManyBody().strength(-250))
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force("collision", d3.forceCollide().radius(35));
 
-    g.append("g")
-      .selectAll("line")
-      .data(edges)
-      .join("line")
-      .attr("stroke", "#d1d5db")
-      .attr("stroke-width", 1.5)
-      .attr("stroke-opacity", 0.6);
+    g.append("g").selectAll("line").data(edges).join("line")
+      .attr("stroke", "#d1d5db").attr("stroke-width", 1.5).attr("stroke-opacity", 0.6);
 
-    const nodeGroup = g
-      .append("g")
-      .selectAll<SVGGElement, SimNode>(".node")
-      .data(nodes)
-      .join("g")
-      .attr("class", "node")
-      .attr("cursor", "pointer")
-      .call(
-        d3
-          .drag<SVGGElement, SimNode>()
-          .on("start", (event, d) => {
-            if (!event.active) simulationRef.current?.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-          })
-          .on("drag", (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-          })
-          .on("end", (event, d) => {
-            if (!event.active) simulationRef.current?.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-          }),
-      );
+    const nodeGroup = g.append("g").selectAll<SVGGElement, SimNode>(".node")
+      .data(nodes).join("g").attr("class", "node").attr("cursor", "pointer")
+      .call(d3.drag<SVGGElement, SimNode>()
+        .on("start", (event, d) => {
+          if (!event.active) simulationRef.current?.alphaTarget(0.3).restart();
+          d.fx = d.x; d.fy = d.y;
+        })
+        .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+        .on("end", (event, d) => {
+          if (!event.active) simulationRef.current?.alphaTarget(0);
+          d.fx = null; d.fy = null;
+        }));
 
-    nodeGroup
-      .append("circle")
-      .attr("r", 10)
+    nodeGroup.append("circle").attr("r", 10)
       .attr("fill", (d) => TYPE_COLORS[d.type] || "#6b7280")
-      .attr("stroke", "#fff")
-      .attr("stroke-width", 2)
-      .attr("stroke-opacity", 0.8);
+      .attr("stroke", "#fff").attr("stroke-width", 2).attr("stroke-opacity", 0.8);
 
-    nodeGroup
-      .append("text")
+    nodeGroup.append("text")
       .text((d) => (d.title.length > 14 ? d.title.slice(0, 14) + "…" : d.title))
-      .attr("dy", -16)
-      .attr("text-anchor", "middle")
-      .attr("font-size", "11px")
-      .attr("fill", "#374151")
-      .attr("pointer-events", "none")
-      .attr("font-weight", 500);
+      .attr("dy", -16).attr("text-anchor", "middle").attr("font-size", "11px")
+      .attr("fill", "#374151").attr("pointer-events", "none").attr("font-weight", 500);
 
-    nodeGroup.on("click", (_event, d) => {
-      navigate(`/kb/${kbSlug}/wiki/${d.slug}`);
-    });
+    nodeGroup.on("click", (_event, d) => navigate(`/kb/${kbSlug}/wiki/${d.slug}`));
 
     simulationRef.current.on("tick", () => {
       g.selectAll<SVGLineElement, SimEdge>("line")
@@ -147,15 +102,11 @@ export default function GraphView() {
         .attr("y1", (d) => (d.source as SimNode).y ?? 0)
         .attr("x2", (d) => (d.target as SimNode).x ?? 0)
         .attr("y2", (d) => (d.target as SimNode).y ?? 0);
-
       nodeGroup.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
 
-    return () => {
-      cleanup();
-      svg.remove();
-    };
-  }, [graph, kbSlug, navigate, cleanup]);
+    return () => { simulationRef.current?.stop(); simulationRef.current = null; svg.remove(); };
+  }, [graph, kbSlug, navigate]);
 
   if (isLoading) return <div className="p-8 text-gray-500">加载图谱数据...</div>;
   if (error) return <div className="p-8 text-red-600">加载失败</div>;
