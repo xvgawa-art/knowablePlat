@@ -87,3 +87,38 @@ async def test_tool_slugify() -> None:
 
     assert _slugify("Burp Suite") == "burp-suite"
     assert _slugify("SQLMap") == "sqlmap"
+
+
+async def test_extract_tool_info_with_usage() -> None:
+    from app.services.llm import LLMResponse
+    from app.services.tool_arsenal import _extract_tool_info_with_usage
+
+    mock_response = json.dumps({"name": "Nmap", "description": "扫描器", "category": "信息收集"})
+    mock_llm = AsyncMock(return_value=LLMResponse(mock_response, 50, 100))
+    with patch("app.services.tool_arsenal.generate_with_usage", mock_llm):
+        result, tokens = await _extract_tool_info_with_usage("content")
+        assert result["name"] == "Nmap"
+        assert tokens == 150
+
+
+async def test_categorize_tool_with_usage() -> None:
+    from app.services.llm import LLMResponse
+    from app.services.tool_arsenal import _categorize_tool_with_usage
+
+    mock_response = json.dumps({"category": "Web安全", "category_slug": "web-security"})
+    mock_llm = AsyncMock(return_value=LLMResponse(mock_response, 30, 60))
+    with patch("app.services.tool_arsenal.generate_with_usage", mock_llm):
+        result, tokens = await _categorize_tool_with_usage({"name": "test"})
+        assert result["category"] == "Web安全"
+        assert tokens == 90
+
+
+async def test_generate_tool_page_with_usage() -> None:
+    from app.services.llm import LLMResponse
+    from app.services.tool_arsenal import _generate_tool_page_with_usage
+
+    mock_llm = AsyncMock(return_value=LLMResponse("# Nmap\n\n简介...", 40, 80))
+    with patch("app.services.tool_arsenal.generate_with_usage", mock_llm):
+        content, tokens = await _generate_tool_page_with_usage({"name": "Nmap"}, [])
+        assert "# Nmap" in content
+        assert tokens == 120

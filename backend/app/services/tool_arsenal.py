@@ -15,7 +15,7 @@ from app.repositories.entity import EntityRepository
 from app.repositories.notification import NotificationRepository
 from app.repositories.wiki_page import WikiPageRepository
 from app.services.filesystem import save_wiki_index, save_wiki_log, save_wiki_page
-from app.services.llm import generate
+from app.services.llm import generate, generate_with_usage
 
 logger = structlog.get_logger()
 
@@ -51,6 +51,26 @@ async def _extract_tool_info(source_content: str) -> dict:
     }
 
 
+async def _extract_tool_info_with_usage(source_content: str) -> tuple[dict, int]:
+    """Extract structured tool information. Returns (tool_info, tokens_used)."""
+    prompt = f"请分析以下工具介绍页面并提取工具信息：\n\n{source_content[:8000]}"
+    resp = await generate_with_usage(prompt, system=TOOL_EXTRACT_SYSTEM)
+    try:
+        json_match = re.search(r"\{[\s\S]*\}", resp.text)
+        if json_match:
+            return json.loads(json_match.group()), resp.total_tokens
+    except json.JSONDecodeError:
+        logger.warning("tool_extract_json_parse_failed", result=resp.text[:200])
+    fallback = {
+        "name": "未知工具",
+        "description": resp.text[:200],
+        "purpose": "",
+        "category": "其他",
+        "tags": [],
+    }
+    return fallback, resp.total_tokens
+
+
 async def _categorize_tool(tool_info: dict) -> dict:
     """Determine tool category using LLM."""
     tool_str = json.dumps(tool_info, ensure_ascii=False)[:2000]
@@ -65,6 +85,20 @@ async def _categorize_tool(tool_info: dict) -> dict:
     return {"category": "其他", "category_slug": "other", "scenario_recommendations": []}
 
 
+async def _categorize_tool_with_usage(tool_info: dict) -> tuple[dict, int]:
+    """Determine tool category. Returns (category_result, tokens_used)."""
+    tool_str = json.dumps(tool_info, ensure_ascii=False)[:2000]
+    prompt = f"请判断以下工具的分类：\n\n{tool_str}"
+    resp = await generate_with_usage(prompt, system=CATEGORY_SYSTEM)
+    try:
+        json_match = re.search(r"\{[\s\S]*\}", resp.text)
+        if json_match:
+            return json.loads(json_match.group()), resp.total_tokens
+    except json.JSONDecodeError:
+        logger.warning("tool_category_parse_failed", result=resp.text[:200])
+    return {"category": "其他", "category_slug": "other", "scenario_recommendations": []}, resp.total_tokens
+
+
 async def _generate_tool_page(tool_info: dict, existing_tools: list[dict]) -> str:
     """Generate tool wiki page content."""
     tool_str = json.dumps(tool_info, ensure_ascii=False)[:3000]
@@ -74,6 +108,18 @@ async def _generate_tool_page(tool_info: dict, existing_tools: list[dict]) -> st
         context += f"\n\n已有同类工具：\n{tool_list}"
 
     return await generate(context, system=TOOL_PAGE_SYSTEM)
+
+
+async def _generate_tool_page_with_usage(tool_info: dict, existing_tools: list[dict]) -> tuple[str, int]:
+    """Generate tool wiki page content. Returns (content, tokens_used)."""
+    tool_str = json.dumps(tool_info, ensure_ascii=False)[:3000]
+    context = f"工具信息：\n{tool_str}"
+    if existing_tools:
+        tool_list = "\n".join(f"- {t['title']} ({t['slug']})" for t in existing_tools[:20])
+        context += f"\n\n已有同类工具：\n{tool_list}"
+
+    resp = await generate_with_usage(context, system=TOOL_PAGE_SYSTEM)
+    return resp.text, resp.total_tokens
 
 
 async def _generate_category_page(
@@ -131,16 +177,20 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                 return
 
             try:
+                total_tokens = 0
+
                 # Step 1: Extract tool info
                 logger.info("tool_ingest_extract_start", source_id=str(source_id))
-                tool_info = await _extract_tool_info(source.raw_content)
+                tool_info, tokens = await _extract_tool_info_with_usage(source.raw_content)
+                total_tokens += tokens
 
                 tool_name = tool_info.get("name", "未知工具")
                 source.title = tool_name
                 tool_slug = _slugify(tool_name) + f"-{str(source_id)[:8]}"
 
                 # Step 2: Categorize
-                category_result = await _categorize_tool(tool_info)
+                category_result, tokens = await _categorize_tool_with_usage(tool_info)
+                total_tokens += tokens
                 category_name = category_result.get("category", "其他")
                 category_slug = category_result.get("category_slug", "other")
                 recommendations = category_result.get("scenario_recommendations", [])
@@ -148,7 +198,8 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                 # Step 3: Generate tool page
                 existing_tools = await wiki_repo.list_by_kb(kb.id, page_type=WikiPageType.tool, limit=50)
                 existing_tool_dicts = [{"title": p.title, "slug": p.slug} for p in existing_tools]
-                tool_content = await _generate_tool_page(tool_info, existing_tool_dicts)
+                tool_content, tokens = await _generate_tool_page_with_usage(tool_info, existing_tool_dicts)
+                total_tokens += tokens
 
                 tool_page = await wiki_repo.create(
                     kb_id=kb.id,
@@ -253,6 +304,7 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                 )
 
                 source.status = SourceStatus.completed
+                source.token_usage = total_tokens
                 source.fetched_at = datetime.now(UTC).replace(tzinfo=None)
                 logger.info("tool_ingest_completed", source_id=str(source_id), tool=tool_name, category=category_name)
                 await kb_repo.refresh_counts(str(kb.id))
