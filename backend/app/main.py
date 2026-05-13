@@ -25,22 +25,35 @@ async def _init_tool_arsenal() -> None:
 
 async def _poll_all_feeds() -> None:
     """Scheduled task: poll all active RSS feeds."""
+    import uuid
+
+    from app.repositories.knowledge_base import KnowledgeBaseRepository
     from app.repositories.rss_feed import RssFeedRepository
 
     async with async_sessionmaker() as session:
         async with session.begin():
             repo = RssFeedRepository(session)
             feeds = await repo.list_active()
+            kb_repo = KnowledgeBaseRepository(session)
+            feed_kb_map = {}
+            for feed in feeds:
+                kb = await kb_repo.get_by_id(uuid.UUID(feed.kb_id))
+                if kb:
+                    feed_kb_map[str(feed.id)] = kb.slug
 
     for feed in feeds:
+        feed_id = str(feed.id)
+        kb_slug = feed_kb_map.get(feed_id, "")
+        if not kb_slug:
+            continue
         try:
             from app.services.rss_fetcher import poll_feed
 
-            await poll_feed(str(feed.id), "")
+            await poll_feed(feed_id, kb_slug)
         except Exception as e:
             import structlog
 
-            structlog.get_logger().error("rss_poll_feed_error", feed_id=str(feed.id), error=str(e))
+            structlog.get_logger().error("rss_poll_feed_error", feed_id=feed_id, error=str(e))
 
 
 @asynccontextmanager
