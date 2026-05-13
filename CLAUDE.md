@@ -45,18 +45,21 @@ knowableplat/
 │   │   ├── models/            # 数据模型
 │   │   │   ├── knowledge_base.py  # 知识库
 │   │   │   ├── source.py      # 原始来源文档
+│   │   │   ├── rss_feed.py    # RSS 订阅源
 │   │   │   ├── wiki_page.py   # Wiki 页面
 │   │   │   ├── entity.py      # 实体（人物、概念、组织）
 │   │   │   └── log.py         # 操作日志
 │   │   ├── api/               # REST API 路由
 │   │   │   ├── knowledge_bases.py  # 知识库 CRUD
 │   │   │   ├── sources.py     # 来源 CRUD + URL 抓取
+│   │   │   ├── rss.py         # RSS 订阅源 CRUD + 手动触发抓取
 │   │   │   ├── wiki.py        # Wiki 浏览/搜索/查询
 │   │   │   ├── generate.py    # 跨知识库文档生成
 │   │   │   ├── learn.py       # 学习 & 测验
 │   │   │   └── auth.py        # 用户认证
 │   │   ├── services/          # 业务逻辑
 │   │   │   ├── fetcher.py     # URL → 干净 Markdown (Firecrawl/Jina)
+│   │   │   ├── rss_fetcher.py # RSS/Atom 订阅源解析 & 定期轮询
 │   │   │   ├── ingest.py      # 来源 → wiki 页面 流水线
 │   │   │   ├── wiki_engine.py # Wiki 维护（交叉引用、lint、更新）
 │   │   │   ├── query.py       # 问题 → 带引用的回答
@@ -136,6 +139,8 @@ knowableplat/
 | 来源列表 | `/kb/{kb_slug}/sources` | 当前知识库的来源列表，状态（处理中/完成/失败） |
 | 提交来源 | `/kb/{kb_slug}/sources` (modal) | 输入 URL 弹窗，选择目标知识库，显示处理进度 |
 | 来源详情 | `/kb/{kb_slug}/sources/[id]` | 原始内容 + 生成的 wiki 页面列表 |
+| RSS 管理 | `/kb/{kb_slug}/rss` | 当前知识库的 RSS 订阅源列表、添加/编辑/删除订阅 |
+| RSS 详情 | `/kb/{kb_slug}/rss/[id]` | 单个订阅源详情、抓取历史、已归档文章列表 |
 | 学习首页 | `/kb/{kb_slug}/learn` | 当前知识库的待复习、学习统计、连续打卡 |
 | 闪卡复习 | `/kb/{kb_slug}/learn/review` | 滑动式闪卡，SM-2 评分 |
 | 测验 | `/kb/{kb_slug}/learn/quiz/[slug]` | LLM 生成的测验题 |
@@ -169,6 +174,30 @@ knowableplat/
 10. **标记矛盾** — 如果新来源与同一知识库内已有论点矛盾，创建 `wiki/{kb_slug}/comparisons/` 对比页
 
 一个来源可能涉及 10-15 个 wiki 页面。LLM 完成所有交叉引用和维护工作。
+
+### RSS 订阅流水线
+
+除了手动提交 URL，知识库还支持通过 RSS/Atom 订阅源自动摄入内容：
+
+**配置阶段：**
+1. **添加订阅源** — 用户为某个知识库配置 RSS 订阅（如安全博客、技术周刊、arXiv 分类等）
+2. **设置规则** — 可选配置过滤规则（关键词过滤、作者过滤、分类过滤），只摄入符合条件的文章
+
+**定时轮询阶段（后台定时任务）：**
+1. **拉取 Feed** — 按配置的间隔（默认每小时）拉取 RSS/Atom 订阅源，解析出新条目
+2. **去重检查** — 对比 `rss_entries` 表中已处理的条目 GUID/URL，跳过已存在的
+3. **规则过滤** — 对新条目应用用户配置的过滤规则，丢弃不符合条件的
+4. **逐条 Ingest** — 将通过过滤的每篇文章当作普通来源，走完整的 Ingest 流水线：
+   - 抓取全文（Firecrawl/Jina）
+   - 存储到 `raw/{kb_slug}/`
+   - LLM 提取、生成 wiki 页面、交叉引用、更新索引和日志
+5. **记录归档** — 在 `rss_entries` 表中记录已处理的条目，避免重复摄入
+
+**用户可在网页端：**
+- 查看 RSS 订阅源列表和状态（上次抓取时间、新文章数、失败数）
+- 手动触发立即抓取
+- 查看每次抓取的归档历史
+- 暂停/恢复订阅
 
 ### Query（查询）流水线
 
@@ -286,6 +315,39 @@ tags: [标签1, 标签2]
 | fetched_at | datetime | 抓取时间 |
 | created_at / updated_at | datetime | 创建/更新时间 |
 
+### rss_feeds（RSS 订阅源表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| kb_id | UUID, FK | 所属知识库 |
+| name | string | 订阅源名称（如「FreeBuf 安全资讯」） |
+| url | string | RSS/Atom 订阅地址 |
+| feed_type | enum | rss / atom |
+| is_active | boolean | 是否启用（默认 true） |
+| poll_interval | integer | 轮询间隔（分钟，默认 60） |
+| last_fetched_at | datetime | 上次抓取时间 |
+| last_fetch_status | enum | success / partial / failed |
+| last_error | text | 最近一次错误信息 |
+| total_fetched | integer | 累计抓取条目数（反规范化） |
+| filter_keywords | string[] | 关键词过滤（包含这些词才摄入，空=不过滤） |
+| filter_authors | string[] | 作者过滤（只摄入指定作者，空=不过滤） |
+| filter_categories | string[] | 分类过滤（只摄入指定分类，空=不过滤） |
+| created_at / updated_at | datetime | 创建/更新时间 |
+
+### rss_entries（RSS 条目记录表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| feed_id | UUID, FK | 所属订阅源 |
+| kb_id | UUID, FK | 所属知识库 |
+| guid | string | RSS 条目唯一标识（用于去重） |
+| url | string | 文章原文 URL |
+| title | string | 文章标题 |
+| published_at | datetime | 文章发布时间 |
+| source_id | UUID, FK, nullable | 关联的来源文档（Ingest 完成后填充） |
+| status | enum | new / ingesting / completed / filtered / failed |
+| fetched_at | datetime | 抓取时间 |
+
 ### wiki_pages（Wiki 页面表）
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -365,6 +427,15 @@ tags: [标签1, 标签2]
 - `GET /api/kb/{kb_slug}/sources` — 列出该知识库的所有来源（分页）
 - `GET /api/kb/{kb_slug}/sources/{id}` — 获取来源详情 + 原始内容
 - `DELETE /api/kb/{kb_slug}/sources/{id}` — 删除来源及关联 wiki 页面
+
+### RSS 订阅管理（知识库范围内）
+- `POST /api/kb/{kb_slug}/rss` — 添加 RSS/Atom 订阅源（URL、名称、过滤规则）
+- `GET /api/kb/{kb_slug}/rss` — 列出该知识库的所有订阅源（含状态统计）
+- `GET /api/kb/{kb_slug}/rss/{id}` — 获取订阅源详情 + 最近抓取条目
+- `PUT /api/kb/{kb_slug}/rss/{id}` — 更新订阅源配置（过滤规则、轮询间隔、启用/暂停）
+- `DELETE /api/kb/{kb_slug}/rss/{id}` — 删除订阅源（不影响已摄入的内容）
+- `POST /api/kb/{kb_slug}/rss/{id}/fetch` — 手动触发立即抓取
+- `GET /api/kb/{kb_slug}/rss/{id}/entries` — 获取订阅源的抓取历史（分页）
 
 ### Wiki 操作（知识库范围内）
 - `GET /api/kb/{kb_slug}/wiki` — 列出该知识库的 wiki 页面（可按类型、标签、搜索过滤）
@@ -590,6 +661,8 @@ pytest --cov=app tests/
 - **LLM 提示词设计：** 不确定 wiki 操作的提示词结构时，参考 [llm-wiki.md](llm-wiki.md) 中的原则 —— wiki 是一个持久的、可复利的产物。
 - **SM-2 算法：** 实现间隔重复时，遵循 [SM-2 原始规范](https://super-memory.com/english/ol/sm2.htm) —— 不要自行发明调度逻辑。
 - **URL 抓取：** URL 抓取失败时，尝试备用抓取器（Firecrawl → Jina → 原始 HTTP + readability）。记录失败日志以便调试。
+- **RSS 解析：** 使用 `feedparser` 库解析 RSS/Atom 订阅源。不同网站的 RSS 格式差异很大，务必处理缺失字段（作者、发布时间、摘要）。
+- **RSS 去重：** 使用条目的 `guid` 字段作为唯一标识（而非 URL，因为 URL 可能变化）。如果 `guid` 缺失，回退到 URL。
 - **Wiki 一致性：** 当 wiki 增长超过 ~100 页时，考虑添加搜索引擎（qmd 或 pgvector），而不是仅依赖 `index.md`。
 
 ---
@@ -617,27 +690,33 @@ pytest --cov=app tests/
 6. `index.md` + `log.md` 自动维护（每个知识库独立）
 7. 基础网页 UI：知识库切换、提交 URL、浏览 wiki 页面
 
-### 第二阶段 — 查询、搜索 & 知识生成
-7. 对 wiki 的自然语言查询
-8. 跨知识库文档生成（多选知识库 + 主题 → 结构化长文）
-9. 全文搜索（PostgreSQL tsvector）
-10. 向量搜索（pgvector 语义搜索）
-11. 图谱可视化（wiki 页面关系）
-12. 回答归档（保存优质回答为 wiki 页面）
+### 第二阶段 — RSS 订阅 & 自动摄入
+8. RSS/Atom 订阅源管理（CRUD + 过滤规则）
+9. RSS 定时轮询服务（后台定时任务 + 去重）
+10. RSS 条目 → Ingest 流水线对接
+11. RSS 管理网页 UI（订阅源列表、抓取历史、手动触发）
 
-### 第三阶段 — 学习系统（网页端）
-13. SM-2 间隔重复服务
-14. 通过 LLM 生成测验/闪卡
-15. 闪卡复习界面（滑动交互）
-16. 学习统计 & 连续打卡追踪
+### 第三阶段 — 查询、搜索 & 知识生成
+12. 对 wiki 的自然语言查询
+13. 跨知识库文档生成（多选知识库 + 主题 → 结构化长文）
+14. 全文搜索（PostgreSQL tsvector）
+15. 向量搜索（pgvector 语义搜索）
+16. 图谱可视化（wiki 页面关系）
+17. 回答归档（保存优质回答为 wiki 页面）
 
-### 第四阶段 — 完善 & 扩展
-17. Wiki 健康检查（lint）自动化
-18. 页面间矛盾检测
-19. 批量摄入（多个 URL）
-20. 浏览器扩展（快速保存文章）
-21. Obsidian 兼容导出
-22. 多用户支持
+### 第四阶段 — 学习系统（网页端）
+18. SM-2 间隔重复服务
+19. 通过 LLM 生成测验/闪卡
+20. 闪卡复习界面（滑动交互）
+21. 学习统计 & 连续打卡追踪
+
+### 第五阶段 — 完善 & 扩展
+22. Wiki 健康检查（lint）自动化
+23. 页面间矛盾检测
+24. 批量摄入（多个 URL）
+25. 浏览器扩展（快速保存文章）
+26. Obsidian 兼容导出
+27. 多用户支持
 
 ---
 
@@ -650,6 +729,8 @@ pytest --cov=app tests/
 - [FastAPI 文档](https://fastapi.tiangolo.com/)
 - [Next.js App Router](https://nextjs.org/docs/app)
 - [Tailwind CSS](https://tailwindcss.com/)
+- [feedparser](https://feedparser.readthedocs.io/) — RSS/Atom 解析库
+- [APScheduler](https://apscheduler.readthedocs.io/) — Python 定时任务调度
 
 ---
 
@@ -657,6 +738,7 @@ pytest --cov=app tests/
 
 - **原始来源不可变** — 初始抓取后绝不修改 `raw/` 中的文件
 - **Wiki 归 LLM 所有** — LLM 编写和维护所有 wiki 内容；用户只负责指导和审阅
-- **异步摄入** — URL 处理是后台任务（通过 FastAPI BackgroundTasks）。前端轮询状态。
+- **异步摄入** — URL 处理和 RSS 条目处理都是后台任务（通过 FastAPI BackgroundTasks + APScheduler 定时任务）。前端轮询状态。
+- **RSS 轮询** — 后台定时任务按订阅源配置的间隔自动拉取。支持手动触发。轮询失败不阻塞其他订阅源。
 - **Token 预算** — 按来源记录 LLM token 使用量。单个来源超过 50K token 时告警。
 - **备份** — wiki 就是 Markdown 文件 + 数据库。wiki 文件通过 Git 版本控制提供历史。
