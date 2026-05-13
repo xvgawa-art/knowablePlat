@@ -83,7 +83,7 @@
 ## Wiki 操作
 
 ### GET /api/kb/{kb_slug}/wiki
-列出 wiki 页面。支持 `?search=` 搜索、`?page_type=` 类型过滤。
+列出 wiki 页面。支持 `?search=` 搜索、`?page_type=` 类型过滤、`?source_id=` 按来源过滤。
 
 ### GET /api/kb/{kb_slug}/wiki/{slug}
 获取 wiki 页面内容。
