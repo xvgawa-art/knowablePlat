@@ -74,6 +74,7 @@ knowableplat/
 │   │   │   ├── query.py       # 问题 → 带引用的回答
 │   │   │   ├── generate.py    # 跨知识库文档生成
 │   │   │   ├── notification.py # 知识新增通知生成
+│   │   │   ├── tool_arsenal.py # 工具装备库专用逻辑（提取、归类、推荐）
 │   │   │   └── llm.py         # LLM 抽象层 (Anthropic/OpenAI)
 │   │   ├── repositories/      # 数据访问层（封装数据库操作）
 │   │   │   ├── base.py        # 基础 Repository（通用 CRUD）
@@ -91,7 +92,9 @@ knowableplat/
 │   │   │   ├── generate_section.md     # 分章节生成内容
 │   │   │   ├── generate_integrate.md   # 整合生成完整文档
 │   │   │   ├── lint_contradictions.md # 检测页面间矛盾
-│   │   │   └── ingest_notify.md       # 生成知识新增通知
+│   │   │   ├── ingest_notify.md       # 生成知识新增通知
+│   │   │   ├── tool_extract.md        # 提取工具信息（用途、优势、场景、下载链接）
+│   │   │   └── tool_recommend.md      # 基于场景推荐工具
 │   │   ├── wiki/              # Wiki 层（按知识库隔离）
 │   │   │   └── {kb_slug}/     # 每个知识库独立的 wiki 空间
 │   │   │       ├── index.md   # 该知识库的内容目录
@@ -99,7 +102,9 @@ knowableplat/
 │   │   │       ├── entities/  # 实体页面
 │   │   │       ├── concepts/  # 概念/主题页面
 │   │   │       ├── comparisons/  # 对比 & 分析页面
-│   │   │       └── sources/   # 来源摘要页面
+│   │   │       ├── sources/   # 来源摘要页面
+│   │   │       ├── tools/     # 工具页面（仅 tool_arsenal 类型知识库）
+│   │   │       └── categories/  # 工具分类页面（仅 tool_arsenal 类型知识库）
 │   │   └── raw/               # 原始来源文档（不可变，按知识库隔离）
 │   │       └── {kb_slug}/     # 每个知识库的原始文档
 │   │           └── assets/    # 下载的图片
@@ -254,6 +259,42 @@ knowableplat/
 
 **与 Query 的区别：** Query 是单库问答（短回答），Generate 是跨库文档生成（长文输出，有完整结构和引用）。
 
+### Tool Arsenal（工具装备）流水线
+
+工具装备库是系统内置的 `kb_type = tool_arsenal` 知识库。当用户向该库提交工具 URL 时，走专用的工具 Ingest 流水线。
+
+**工具 Ingest 流程：**
+
+1. **抓取（Fetch）** — 与普通 Ingest 相同，使用 Firecrawl/Jina 将 URL 转为 Markdown
+2. **存储原始内容** — 保存到 `raw/tool-arsenal/`
+3. **工具信息提取** — LLM 使用 `prompts/tool_extract.md` 提取结构化信息：
+   - 工具名称、简介、官方主页
+   - 核心用途和功能
+   - 相比同类工具的优势
+   - 典型使用场景
+   - 下载链接、许可证、支持平台
+   - 所属分类（如「漏洞扫描」「逆向工程」「信息收集」等）
+4. **创建工具页面** — 生成 `wiki/tool-arsenal/tools/<tool-slug>.md`（type: tool），使用工具页面模板
+5. **归类** — LLM 判断该工具属于哪个分类，创建或更新 `wiki/tool-arsenal/categories/<category-slug>.md`（type: tool_category）：
+   - 如果分类已存在，将新工具加入该分类的工具列表
+   - 如果是新分类，创建分类页面
+6. **同类工具交叉引用** — 在同类工具之间建立 `[[wikilinks]]` 双向链接
+7. **更新索引和日志** — 与普通 Ingest 相同
+8. **生成知识新增通知** — 与普通 Ingest 相同
+
+**工具查询流程：**
+
+当用户在工具装备库中提问（如「xx 场景我要做 xxx 有什么工具推荐」）：
+
+1. **读取分类索引** — 读取工具分类页面，定位相关分类
+2. **匹配场景** — LLM 分析用户描述的场景需求，匹配到具体工具
+3. **读取工具详情** — 读取候选工具的 wiki 页面
+4. **生成推荐** — 返回结构化推荐：
+   - 推荐工具列表（附 [[wikilinks]]）
+   - 每个工具的适用场景说明
+   - 同类工具对比（如果用户需要）
+   - 下载链接
+
 ### Lint（健康检查）
 
 定期审核 wiki 健康状况：
@@ -281,7 +322,7 @@ LLM 擅长建议新的调查问题和新的来源。这让 wiki 在增长过程�
 ```markdown
 ---
 title: 页面标题
-type: source | entity | concept | comparison
+type: source | entity | concept | comparison | tool | tool_category
 created: 2026-05-13
 updated: 2026-05-13
 sources:
@@ -308,6 +349,73 @@ tags: [标签1, 标签2]
 <!-- 引用回原始来源 -->
 ```
 
+**工具页面模板**（`type: tool`，仅工具装备库使用）：
+
+```markdown
+---
+title: 工具名称
+type: tool
+created: 2026-05-13
+updated: 2026-05-13
+category: 漏洞扫描
+sources:
+  - source-slug
+tags: [安全, 扫描器, 开源]
+homepage: https://example.com
+download_url: https://example.com/download
+license: MIT / 商业 / 免费开源
+platforms: [Windows, Linux, macOS]
+---
+
+# 工具名称
+
+## 简介
+<!-- 一句话概述工具是什么 -->
+
+## 用途
+<!-- 工具解决什么问题，核心功能 -->
+
+## 优势
+<!-- 相比同类工具的突出优势 -->
+
+## 使用场景
+<!-- 典型使用场景列表 -->
+
+## 快速上手
+<!-- 基本安装和用法 -->
+
+## 同类工具
+<!-- [[wikilinks]] 到同类工具页面 -->
+
+## 来源
+<!-- 引用回原始来源 -->
+```
+
+**工具分类页面模板**（`type: tool_category`）：
+
+```markdown
+---
+title: 漏洞扫描工具
+type: tool_category
+created: 2026-05-13
+updated: 2026-05-13
+tags: [漏洞扫描]
+---
+
+# 漏洞扫描工具
+
+## 概述
+<!-- 该分类工具的总体说明 -->
+
+## 工具列表
+<!-- 带 [[wikilinks]] 的工具列表，附简要说明 -->
+
+## 场景推荐
+- **快速扫描** → [[tool-a]]
+- **深度审计** → [[tool-b]]
+- **CI/CD 集成** → [[tool-c]]
+```
+
 ---
 
 ## 数据库设计
@@ -329,12 +437,16 @@ tags: [标签1, 标签2]
 | name | string, unique | 知识库名称（如「Web 安全」「AI 安全」） |
 | slug | string, unique | URL 友好标识符（如 `web-security`） |
 | description | text | 知识库描述 |
+| kb_type | enum | `knowledge`（普通知识库）/ `tool_arsenal`（工具装备库） |
+| is_system | boolean | 系统内置知识库，不可删除（默认 false）。工具装备库为 true。 |
 | icon | string | 图标标识（可选） |
 | color | string | 主题色（可选，用于 UI 区分） |
 | is_public | boolean | 是否公开（默认 false） |
 | source_count | integer | 来源总数（反规范化，定期更新） |
 | wiki_page_count | integer | Wiki 页面总数（反规范化） |
 | created_at / updated_at | datetime | 创建/更新时间 |
+
+**系统内置知识库：** 平台初始化时自动创建一个 `kb_type = tool_arsenal`、`is_system = true` 的知识库（slug: `tool-arsenal`），用于存放工具简介、链接、归类。该库不可被用户删除。
 
 ### sources（来源表）
 | 字段 | 类型 | 说明 |
@@ -390,7 +502,7 @@ tags: [标签1, 标签2]
 | kb_id | UUID, FK | 所属知识库 |
 | slug | string | URL 友好标识符（联合唯一：`(kb_id, slug)`） |
 | title | string | 页面标题 |
-| type | enum | source / entity / concept / comparison |
+| type | enum | source / entity / concept / comparison / tool / tool_category |
 | content | text | Markdown 内容 |
 | frontmatter | JSON | 解析后的 YAML frontmatter |
 | source_ids | UUID[] | 关联的来源文档 |
@@ -456,7 +568,7 @@ tags: [标签1, 标签2]
 - `GET /api/knowledge-bases` — 列出所有知识库（含统计摘要）
 - `GET /api/knowledge-bases/{kb_slug}` — 获取知识库详情 + 统计
 - `PUT /api/knowledge-bases/{kb_slug}` — 更新知识库信息
-- `DELETE /api/knowledge-bases/{kb_slug}` — 删除知识库及全部关联数据
+- `DELETE /api/knowledge-bases/{kb_slug}` — 删除知识库及全部关联数据（`is_system = true` 的知识库返回 403 禁止删除）
 
 ### 来源管理（知识库范围内）
 - `POST /api/kb/{kb_slug}/sources` — 向指定知识库提交 URL 进行摄入（异步任务）
@@ -838,35 +950,37 @@ pytest --cov=app tests/
 ## 优先级 & 路线图
 
 ### 第一阶段 — 核心 Ingest & Wiki（MVP）
-1. 知识库管理（CRUD + 数据库模型）
-2. URL 抓取服务（Firecrawl/Jina）
-3. 来源存储（数据库 + 文件系统，按知识库隔离）
-4. LLM Ingest 流水线（来源 → wiki 页面，限定知识库范围）
-5. 知识新增通知生成（Ingest 完成后自动通知，含总结 + 关联知识点链接）
-6. Wiki 页面 CRUD API（按知识库范围）
-7. `index.md` + `log.md` 自动维护（每个知识库独立）
-8. 基础网页 UI：知识库切换、提交 URL、浏览 wiki 页面、通知中心
+1. 知识库管理（CRUD + 数据库模型，含 kb_type / is_system 字段）
+2. 系统初始化自动创建工具装备库（`tool-arsenal`，不可删除）
+3. URL 抓取服务（Firecrawl/Jina）
+4. 来源存储（数据库 + 文件系统，按知识库隔离）
+5. LLM Ingest 流水线（来源 → wiki 页面，限定知识库范围）
+6. 工具装备专用 Ingest（提取工具信息 + 自动归类 + 同类交叉引用）
+7. 知识新增通知生成（Ingest 完成后自动通知，含总结 + 关联知识点链接）
+8. Wiki 页面 CRUD API（按知识库范围）
+9. `index.md` + `log.md` 自动维护（每个知识库独立）
+10. 基础网页 UI：知识库切换、提交 URL、浏览 wiki 页面、通知中心、工具装备库浏览
 
 ### 第二阶段 — RSS 订阅 & 自动摄入
-9. RSS/Atom 订阅源管理（CRUD + 过滤规则）
-10. RSS 定时轮询服务（后台定时任务 + 去重）
-11. RSS 条目 → Ingest 流水线对接（含自动通知生成）
-12. RSS 管理网页 UI（订阅源列表、抓取历史、手动触发）
+11. RSS/Atom 订阅源管理（CRUD + 过滤规则）
+12. RSS 定时轮询服务（后台定时任务 + 去重）
+13. RSS 条目 → Ingest 流水线对接（含自动通知生成）
+14. RSS 管理网页 UI（订阅源列表、抓取历史、手动触发）
 
 ### 第三阶段 — 查询、搜索 & 知识生成
-13. 对 wiki 的自然语言查询
-14. 跨知识库文档生成（多选知识库 + 主题 → 结构化长文）
-15. 全文搜索（PostgreSQL tsvector）
-16. 向量搜索（pgvector 语义搜索）
-17. 图谱可视化（wiki 页面关系）
+15. 对 wiki 的自然语言查询（含工具装备库场景化推荐）
+16. 跨知识库文档生成（多选知识库 + 主题 → 结构化长文）
+17. 全文搜索（PostgreSQL tsvector）
+18. 向量搜索（pgvector 语义搜索）
+19. 图谱可视化（wiki 页面关系）
 
 ### 第四阶段 — 完善 & 扩展
-18. Wiki 健康检查（lint）自动化
-19. 页面间矛盾检测
-20. 批量摄入（多个 URL）
-21. 浏览器扩展（快速保存文章）
-22. Obsidian 兼容导出
-23. 多用户支持
+20. Wiki 健康检查（lint）自动化
+21. 页面间矛盾检测
+22. 批量摄入（多个 URL）
+23. 浏览器扩展（快速保存文章）
+24. Obsidian 兼容导出
+25. 多用户支持
 
 ---
 
@@ -889,6 +1003,7 @@ pytest --cov=app tests/
 - **原始来源不可变** — 初始抓取后绝不修改 `raw/` 中的文件
 - **Wiki 归 LLM 所有** — LLM 编写和维护所有 wiki 内容；用户只负责指导和审阅
 - **异步摄入** — URL 处理和 RSS 条目处理都是后台任务（通过 FastAPI BackgroundTasks + APScheduler 定时任务）。前端轮询状态。
+- **工具装备库** — 系统内置，`is_system = true`，不可删除。系统初始化时自动创建（slug: `tool-arsenal`）。提交到该库的 URL 走专用工具 Ingest 流水线。
 - **RSS 轮询** — 后台定时任务按订阅源配置的间隔自动拉取。支持手动触发。轮询失败不阻塞其他订阅源。
 - **Token 预算** — 按来源记录 LLM token 使用量。单个来源超过 50K token 时告警。
 - **备份** — wiki 就是 Markdown 文件 + 数据库。wiki 文件通过 Git 版本控制提供历史。
