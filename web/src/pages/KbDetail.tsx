@@ -10,6 +10,24 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   failed: { label: "失败", color: "bg-red-100 text-red-800" },
 };
 
+const TYPE_COLORS: Record<string, string> = {
+  source: "bg-blue-100 text-blue-700",
+  entity: "bg-green-100 text-green-700",
+  concept: "bg-purple-100 text-purple-700",
+  comparison: "bg-yellow-100 text-yellow-700",
+  tool: "bg-red-100 text-red-700",
+  tool_category: "bg-pink-100 text-pink-700",
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  source: "来源",
+  entity: "实体",
+  concept: "概念",
+  comparison: "对比",
+  tool: "工具",
+  tool_category: "工具分类",
+};
+
 export default function KbDetail() {
   const { kbSlug } = useParams();
   const { data: kb, isLoading, error } = useQuery<KnowledgeBase>({
@@ -141,8 +159,8 @@ export default function KbDetail() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-900">{page.title}</span>
-                    <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
-                      {page.page_type}
+                    <span className={`text-xs px-2 py-0.5 rounded ${TYPE_COLORS[page.page_type] ?? "bg-gray-100 text-gray-600"}`}>
+                      {TYPE_LABELS[page.page_type] ?? page.page_type}
                     </span>
                   </div>
                 </Link>
