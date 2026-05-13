@@ -20,7 +20,22 @@ export default function ToolArsenal() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">工具装备库</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-gray-900">工具装备库</h1>
+          {!isLoading && pages.length > 0 && (
+            <span className="text-sm text-gray-500">
+              {categories.length} 个分类 · {tools.length} 个工具
+            </span>
+          )}
+        </div>
+        <Link
+          to="/kb/tool-arsenal/sources/submit"
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+        >
+          提交工具 URL
+        </Link>
+      </div>
 
       {isLoading ? (
         <p className="text-gray-500">加载中...</p>
@@ -30,12 +45,6 @@ export default function ToolArsenal() {
           <p className="text-sm text-gray-400">
             向工具装备库提交工具 URL，系统会自动提取信息并归类
           </p>
-          <Link
-            to="/kb/tool-arsenal/sources/submit"
-            className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            提交工具 URL
-          </Link>
         </div>
       ) : (
         <>
@@ -50,7 +59,7 @@ export default function ToolArsenal() {
                     className="block p-4 bg-white rounded-lg border border-gray-200 hover:shadow-md"
                   >
                     <h3 className="font-semibold text-gray-900">{cat.title}</h3>
-                    <p className="text-sm text-gray-500 mt-1">{cat.slug}</p>
+                    <p className="text-sm text-gray-400 mt-1">{new Date(cat.created_at).toLocaleDateString("zh-CN")}</p>
                   </Link>
                 ))}
               </div>
