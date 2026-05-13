@@ -83,6 +83,30 @@ class TestGenerateService:
             assert result["content"] is not None
 
 
+    async def test_generate_document_empty_sections(self):
+        from app.services.generate import generate_document
+
+        sample_knowledge = "主题：Test"
+        call_count = 0
+
+        async def mock_generate_with_usage(prompt, system=""):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                text = '{"title": "Test", "sections": []}'
+            else:
+                text = "# Test\n\nEmpty document."
+            return LLMResponse(text, input_tokens=5, output_tokens=10)
+
+        with (
+            patch("app.services.generate.retrieve_knowledge", return_value=sample_knowledge),
+            patch("app.services.generate.generate_with_usage", side_effect=mock_generate_with_usage),
+        ):
+            result = await generate_document([str(uuid.uuid4())], "Test")
+            assert result["title"] == "Test"
+            assert result["token_usage"] > 0
+
+
 class TestGenerateAPI:
     async def test_create_and_list_generation(self, client: AsyncClient):
         kb_resp = await client.post(
