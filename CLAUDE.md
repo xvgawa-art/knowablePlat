@@ -52,6 +52,7 @@ knowableplat/
 │   │   │   ├── knowledge_bases.py  # 知识库 CRUD
 │   │   │   ├── sources.py     # 来源 CRUD + URL 抓取
 │   │   │   ├── wiki.py        # Wiki 浏览/搜索/查询
+│   │   │   ├── generate.py    # 跨知识库文档生成
 │   │   │   ├── learn.py       # 学习 & 测验
 │   │   │   └── auth.py        # 用户认证
 │   │   ├── services/          # 业务逻辑
@@ -59,6 +60,7 @@ knowableplat/
 │   │   │   ├── ingest.py      # 来源 → wiki 页面 流水线
 │   │   │   ├── wiki_engine.py # Wiki 维护（交叉引用、lint、更新）
 │   │   │   ├── query.py       # 问题 → 带引用的回答
+│   │   │   ├── generate.py    # 跨知识库文档生成
 │   │   │   ├── llm.py         # LLM 抽象层 (Anthropic/OpenAI)
 │   │   │   └── learning.py    # 间隔重复 & 测题生成
 │   │   ├── prompts/           # LLM 提示词模板
@@ -66,6 +68,10 @@ knowableplat/
 │   │   │   ├── ingest_synthesize.md   # 生成 wiki 页面内容
 │   │   │   ├── ingest_crossref.md     # 查找与已有 wiki 的关联
 │   │   │   ├── query_answer.md        # 基于 wiki 上下文回答问题
+│   │   │   ├── generate_retrieve.md    # 跨知识库知识检索
+│   │   │   ├── generate_outline.md     # 生成文档大纲
+│   │   │   ├── generate_section.md     # 分章节生成内容
+│   │   │   ├── generate_integrate.md   # 整合生成完整文档
 │   │   │   ├── lint_contradictions.md # 检测页面间矛盾
 │   │   │   ├── learn_quiz.md          # 从 wiki 内容生成测验题
 │   │   │   └── learn_flashcard.md     # 生成闪卡
@@ -135,6 +141,8 @@ knowableplat/
 | 测验 | `/kb/{kb_slug}/learn/quiz/[slug]` | LLM 生成的测验题 |
 | 对话查询 | `/kb/{kb_slug}/chat` | 在当前知识库上下文中问答，带 wiki 引用的回答 |
 | 图谱视图 | `/kb/{kb_slug}/wiki/graph` | 当前知识库的 wiki 页面关系力导向图 |
+| 知识生成 | `/generate` | 跨知识库文档生成（多选知识库、输入主题、生成结构化文档） |
+| 生成历史 | `/generate/history` | 已生成文档列表，支持查看/下载/删除 |
 
 ### 响应式设计
 - 桌面端（>= 1024px）：完整侧边栏 + 宽内容区
@@ -172,6 +180,27 @@ knowableplat/
 4. **可选：归档回答** — 如果回答有价值（对比、分析），保存为新的 wiki 页面
 
 **好的回答可以回存到 wiki。** 你的探索在知识库中复利积累，和摄入的来源一样。
+
+### Generate（知识生成）流水线
+
+当用户要求生成一篇主题文档时（可跨多个知识库）：
+
+1. **选择知识库** — 用户多选要参考的知识库（如同时选「Web 安全」和「AI 安全」）
+2. **输入主题要求** — 用户描述生成需求（如「生成一篇关于 Harness 发展史的文章」）
+3. **知识检索** — 系统从所有选中知识库的 wiki 中检索与主题相关的页面：
+   - 读取各知识库的 `index.md` 定位相关页面
+   - 读取相关 wiki 页面的完整内容
+   - 汇总来自不同知识库的知识片段
+4. **规划文档结构** — LLM 根据检索到的知识和主题要求，规划文档大纲（章节结构、要点分布）
+5. **分段生成** — 按大纲逐章节生成内容，每段引用来源知识库和具体 wiki 页面
+6. **汇总整合** — 合并各章节，检查逻辑连贯性，消除重复，统一风格
+7. **输出文档** — 生成完整的结构化 Markdown 文档，包含：
+   - 标题、摘要、目录
+   - 分章节正文（每节标注引用来源：`[来源：知识库名/wiki页面]`）
+   - 参考资料列表（列出用到的知识库和 wiki 页面链接）
+8. **保存记录** — 生成的文档保存到 `generated_docs` 表，用户可查看/下载历史
+
+**与 Query 的区别：** Query 是单库问答（短回答），Generate 是跨库文档生成（长文输出，有完整结构和引用）。
 
 ### Lint（健康检查）
 
@@ -305,6 +334,21 @@ tags: [标签1, 标签2]
 | next_review | date | 下次复习日期 |
 | last_reviewed | date | 上次复习日期 |
 
+### generated_docs（生成文档表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| user_id | UUID, FK | 用户 ID |
+| title | string | 文档标题 |
+| topic | text | 用户的原始主题要求 |
+| content | text | 生成的 Markdown 文档内容 |
+| kb_ids | UUID[] | 引用的知识库 ID 列表 |
+| referenced_page_ids | UUID[] | 引用的 wiki 页面 ID 列表 |
+| status | enum | generating / completed / failed |
+| word_count | integer | 文档字数 |
+| token_usage | integer | 消耗的 LLM token 数 |
+| created_at | datetime | 创建时间 |
+
 ---
 
 ## API 设计
@@ -334,6 +378,12 @@ tags: [标签1, 标签2]
 - `POST /api/kb/{kb_slug}/learn/review` — 提交复习结果（更新 SM-2 调度）
 - `GET /api/kb/{kb_slug}/learn/quiz/{slug}` — 为该知识库的 wiki 页面生成测验题
 - `GET /api/kb/{kb_slug}/learn/stats` — 该知识库的学习统计
+
+### 知识生成（跨知识库）
+- `POST /api/generate` — 提交生成请求（参数：`kb_ids[]` 知识库列表、`topic` 主题要求，异步任务）
+- `GET /api/generate/{id}` — 获取生成任务状态 / 生成结果
+- `GET /api/generate` — 列出生成历史（分页）
+- `DELETE /api/generate/{id}` — 删除已生成文档
 
 ### 认证
 - `POST /api/auth/register` — 注册
@@ -567,26 +617,27 @@ pytest --cov=app tests/
 6. `index.md` + `log.md` 自动维护（每个知识库独立）
 7. 基础网页 UI：知识库切换、提交 URL、浏览 wiki 页面
 
-### 第二阶段 — 查询 & 搜索
+### 第二阶段 — 查询、搜索 & 知识生成
 7. 对 wiki 的自然语言查询
-8. 全文搜索（PostgreSQL tsvector）
-9. 向量搜索（pgvector 语义搜索）
-10. 图谱可视化（wiki 页面关系）
-11. 回答归档（保存优质回答为 wiki 页面）
+8. 跨知识库文档生成（多选知识库 + 主题 → 结构化长文）
+9. 全文搜索（PostgreSQL tsvector）
+10. 向量搜索（pgvector 语义搜索）
+11. 图谱可视化（wiki 页面关系）
+12. 回答归档（保存优质回答为 wiki 页面）
 
 ### 第三阶段 — 学习系统（网页端）
-12. SM-2 间隔重复服务
-13. 通过 LLM 生成测验/闪卡
-14. 闪卡复习界面（滑动交互）
-15. 学习统计 & 连续打卡追踪
+13. SM-2 间隔重复服务
+14. 通过 LLM 生成测验/闪卡
+15. 闪卡复习界面（滑动交互）
+16. 学习统计 & 连续打卡追踪
 
 ### 第四阶段 — 完善 & 扩展
-16. Wiki 健康检查（lint）自动化
-17. 页面间矛盾检测
-18. 批量摄入（多个 URL）
-19. 浏览器扩展（快速保存文章）
-20. Obsidian 兼容导出
-21. 多用户支持
+17. Wiki 健康检查（lint）自动化
+18. 页面间矛盾检测
+19. 批量摄入（多个 URL）
+20. 浏览器扩展（快速保存文章）
+21. Obsidian 兼容导出
+22. 多用户支持
 
 ---
 
