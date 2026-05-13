@@ -51,6 +51,12 @@ class SemanticSearchRequest(BaseModel):
     limit: int = 10
 
 
+class WikiPageUpdate(BaseModel):
+    content: str
+    title: str | None = None
+    outgoing_links: list[str] | None = None
+
+
 class ActivityLogResponse(BaseModel):
     id: uuid.UUID
     kb_id: uuid.UUID

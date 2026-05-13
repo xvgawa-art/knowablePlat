@@ -99,6 +99,29 @@ async def test_delete_wiki_page(client: AsyncClient, kb_with_wiki: str) -> None:
     assert resp.status_code == 404
 
 
+async def test_update_wiki_page(client: AsyncClient, kb_with_wiki: str) -> None:
+    resp = await client.put(
+        f"/api/kb/{kb_with_wiki}/wiki/test-page",
+        json={"content": "# 更新后的内容\n\n新内容在这里", "title": "更新标题"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["content"] == "# 更新后的内容\n\n新内容在这里"
+    assert data["title"] == "更新标题"
+
+    # Verify persistence
+    resp = await client.get(f"/api/kb/{kb_with_wiki}/wiki/test-page")
+    assert resp.json()["title"] == "更新标题"
+
+
+async def test_update_wiki_page_not_found(client: AsyncClient, kb_slug: str) -> None:
+    resp = await client.put(
+        f"/api/kb/{kb_slug}/wiki/nonexistent",
+        json={"content": "内容"},
+    )
+    assert resp.status_code == 404
+
+
 async def test_wiki_kb_not_found(client: AsyncClient) -> None:
     resp = await client.get("/api/kb/nonexistent/wiki")
     assert resp.status_code == 404

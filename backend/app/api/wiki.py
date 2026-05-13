@@ -14,6 +14,7 @@ from app.schemas.wiki import (
     WikiGraphData,
     WikiPageListItem,
     WikiPageResponse,
+    WikiPageUpdate,
     WikiQueryRequest,
     WikiQueryResponse,
 )
@@ -129,6 +130,28 @@ async def get_wiki_page(kb_slug: str, slug: str, db: AsyncSession = Depends(get_
     page = await wiki_repo.get_by_slug(kb.id, slug)
     if page is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wiki 页面不存在")
+    return page
+
+
+@router.put("/{slug}", response_model=WikiPageResponse)
+async def update_wiki_page(kb_slug: str, slug: str, data: WikiPageUpdate, db: AsyncSession = Depends(get_db)):
+    kb = await _get_kb(kb_slug, db)
+    wiki_repo = WikiPageRepository(db)
+    page = await wiki_repo.get_by_slug(kb.id, slug)
+    if page is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wiki 页面不存在")
+
+    update_kwargs: dict = {"content": data.content}
+    if data.title is not None:
+        update_kwargs["title"] = data.title
+    if data.outgoing_links is not None:
+        update_kwargs["outgoing_links"] = data.outgoing_links
+
+    page = await wiki_repo.update(page, **update_kwargs)
+
+    from app.services.filesystem import save_wiki_page
+
+    save_wiki_page(kb_slug, slug, page.content)
     return page
 
 
