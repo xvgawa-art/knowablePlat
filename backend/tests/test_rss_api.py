@@ -149,3 +149,48 @@ async def test_list_entries_empty(client: AsyncClient, kb_with_slug: str) -> Non
     resp = await client.get(f"/api/kb/{kb_with_slug}/rss/{feed_id}/entries")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+async def test_update_feed_not_found(client: AsyncClient, kb_with_slug: str) -> None:
+    fake_id = str(uuid.uuid4())
+    resp = await client.put(
+        f"/api/kb/{kb_with_slug}/rss/{fake_id}",
+        json={"name": "Ghost"},
+    )
+    assert resp.status_code == 404
+
+
+async def test_delete_feed_not_found(client: AsyncClient, kb_with_slug: str) -> None:
+    fake_id = str(uuid.uuid4())
+    resp = await client.delete(f"/api/kb/{kb_with_slug}/rss/{fake_id}")
+    assert resp.status_code == 404
+
+
+async def test_trigger_fetch_not_found(client: AsyncClient, kb_with_slug: str) -> None:
+    fake_id = str(uuid.uuid4())
+    resp = await client.post(f"/api/kb/{kb_with_slug}/rss/{fake_id}/fetch", json={})
+    assert resp.status_code == 404
+
+
+async def test_create_feed_empty_name(client: AsyncClient, kb_with_slug: str) -> None:
+    resp = await client.post(
+        f"/api/kb/{kb_with_slug}/rss",
+        json={"name": "", "url": "https://example.com/feed.xml"},
+    )
+    assert resp.status_code == 422
+
+
+async def test_create_feed_missing_name(client: AsyncClient, kb_with_slug: str) -> None:
+    resp = await client.post(
+        f"/api/kb/{kb_with_slug}/rss",
+        json={"url": "https://example.com/feed.xml"},
+    )
+    assert resp.status_code == 422
+
+
+async def test_create_feed_invalid_poll_interval(client: AsyncClient, kb_with_slug: str) -> None:
+    resp = await client.post(
+        f"/api/kb/{kb_with_slug}/rss",
+        json={"name": "Bad Interval", "url": "https://example.com/feed.xml", "poll_interval": 1},
+    )
+    assert resp.status_code == 422
