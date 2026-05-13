@@ -71,3 +71,27 @@ async def test_delete_source(client: AsyncClient, kb_slug: str) -> None:
 async def test_source_kb_not_found(client: AsyncClient) -> None:
     resp = await client.post("/api/kb/nonexistent/sources", json={"url": "https://example.com"})
     assert resp.status_code == 404
+
+
+async def test_batch_create_sources(client: AsyncClient, kb_slug: str) -> None:
+    urls = [
+        "https://example.com/batch-1",
+        "https://example.com/batch-2",
+        "https://example.com/batch-3",
+    ]
+    resp = await client.post(f"/api/kb/{kb_slug}/sources/batch", json={"urls": urls})
+    assert resp.status_code == 201
+    sources = resp.json()
+    assert len(sources) == 3
+    assert all(s["status"] == "processing" for s in sources)
+
+
+async def test_batch_create_with_duplicate(client: AsyncClient, kb_slug: str) -> None:
+    await client.post(f"/api/kb/{kb_slug}/sources", json={"url": "https://example.com/batch-dup"})
+    resp = await client.post(
+        f"/api/kb/{kb_slug}/sources/batch",
+        json={"urls": ["https://example.com/batch-dup", "https://example.com/batch-new"]},
+    )
+    assert resp.status_code == 201
+    sources = resp.json()
+    assert len(sources) == 2

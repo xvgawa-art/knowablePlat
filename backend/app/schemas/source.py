@@ -10,6 +10,10 @@ class SourceCreate(BaseModel):
     url: str = Field(min_length=1, max_length=2000)
 
 
+class BatchSourceCreate(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=50)
+
+
 class SourceResponse(BaseModel):
     id: uuid.UUID
     kb_id: uuid.UUID

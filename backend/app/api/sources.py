@@ -8,7 +8,7 @@ from app.models.knowledge_base import KnowledgeBase
 from app.models.source import SourceStatus
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.source import SourceRepository
-from app.schemas.source import SourceCreate, SourceDetailResponse, SourceResponse
+from app.schemas.source import BatchSourceCreate, SourceCreate, SourceDetailResponse, SourceResponse
 from app.services.fetcher import fetch_url
 
 router = APIRouter(prefix="/api/kb/{kb_slug}/sources", tags=["sources"])
@@ -71,6 +71,29 @@ async def create_source(
     source = await _source_repo(db).create(kb_id=kb.id, url=data.url, status=SourceStatus.processing)
     background_tasks.add_task(_ingest_source, source.id, kb_slug)
     return source
+
+
+@router.post("/batch", response_model=list[SourceResponse], status_code=status.HTTP_201_CREATED)
+async def batch_create_sources(
+    kb_slug: str, data: BatchSourceCreate, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
+):
+    kb = await _get_kb(kb_slug, db)
+    repo = _source_repo(db)
+    sources = []
+
+    for url in data.urls:
+        url = url.strip()
+        if not url:
+            continue
+        existing = await repo.get_by_url(kb.id, url)
+        if existing:
+            sources.append(existing)
+            continue
+        source = await repo.create(kb_id=kb.id, url=url, status=SourceStatus.processing)
+        background_tasks.add_task(_ingest_source, source.id, kb_slug)
+        sources.append(source)
+
+    return sources
 
 
 @router.get("", response_model=list[SourceResponse])
