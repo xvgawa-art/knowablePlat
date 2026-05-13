@@ -108,6 +108,15 @@ async def semantic_search(kb_slug: str, data: SemanticSearchRequest, db: AsyncSe
     return await wiki_repo.vector_search(kb.id, query_embedding, limit=data.limit)
 
 
+@router.post("/lint")
+async def lint_wiki(kb_slug: str, db: AsyncSession = Depends(get_db)):
+    kb = await _get_kb(kb_slug, db)
+
+    from app.services.wiki_engine import lint_wiki
+
+    return await lint_wiki(str(kb.id), kb_slug, db)
+
+
 @router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_wiki_page(kb_slug: str, slug: str, db: AsyncSession = Depends(get_db)):
     kb = await _get_kb(kb_slug, db)
