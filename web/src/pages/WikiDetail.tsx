@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router";
+import { useParams, Link, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
@@ -7,6 +7,7 @@ import type { WikiPage } from "../types";
 
 export default function WikiDetail() {
   const { kbSlug, slug } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
@@ -26,6 +27,19 @@ export default function WikiDetail() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => api.del(`/kb/${kbSlug}/wiki/${slug}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["wikiPages", kbSlug] });
+      navigate(`/kb/${kbSlug}/wiki`);
+    },
+  });
+
+  function handleDelete() {
+    if (!confirm("确定删除此页面？此操作不可撤销。")) return;
+    deleteMutation.mutate();
+  }
+
   if (isLoading) return <div className="p-8 text-gray-500">加载中...</div>;
   if (error || !page) return <div className="p-8 text-red-600">页面不存在</div>;
 
@@ -42,12 +56,21 @@ export default function WikiDetail() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">{page.title}</h1>
         {!editing && (
-          <button
-            onClick={startEdit}
-            className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50"
-          >
-            编辑
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={startEdit}
+              className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50"
+            >
+              编辑
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+              className="px-3 py-1.5 text-sm rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? "删除中..." : "删除"}
+            </button>
+          </div>
         )}
       </div>
 
