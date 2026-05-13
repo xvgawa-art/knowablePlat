@@ -50,6 +50,7 @@ knowableplat/
 │   │   ├── main.py            # FastAPI 入口
 │   │   ├── config.py          # 配置 & 环境变量
 │   │   ├── models/            # 数据模型
+│   │   │   ├── user.py        # 用户
 │   │   │   ├── knowledge_base.py  # 知识库
 │   │   │   ├── source.py      # 原始来源文档
 │   │   │   ├── rss_feed.py    # RSS 订阅源
@@ -74,6 +75,12 @@ knowableplat/
 │   │   │   ├── generate.py    # 跨知识库文档生成
 │   │   │   ├── notification.py # 知识新增通知生成
 │   │   │   └── llm.py         # LLM 抽象层 (Anthropic/OpenAI)
+│   │   ├── repositories/      # 数据访问层（封装数据库操作）
+│   │   │   ├── base.py        # 基础 Repository（通用 CRUD）
+│   │   │   ├── knowledge_base.py
+│   │   │   ├── source.py
+│   │   │   ├── wiki_page.py
+│   │   │   └── notification.py
 │   │   ├── prompts/           # LLM 提示词模板
 │   │   │   ├── ingest_extract.md      # 提取实体、概念、论点
 │   │   │   ├── ingest_synthesize.md   # 生成 wiki 页面内容
@@ -156,7 +163,7 @@ knowableplat/
 | Wiki 浏览 | `/kb/{kb_slug}/wiki` | 当前知识库的 wiki 页面列表，按类型/标签筛选，图谱视图切换 |
 | Wiki 详情 | `/kb/{kb_slug}/wiki/[slug]` | 单个 wiki 页面内容、反向链接、相关页面 |
 | 来源列表 | `/kb/{kb_slug}/sources` | 当前知识库的来源列表，状态（处理中/完成/失败） |
-| 提交来源 | `/kb/{kb_slug}/sources` (modal) | 输入 URL 弹窗，选择目标知识库，显示处理进度 |
+| 提交来源 | `/kb/{kb_slug}/sources` (modal) | 输入 URL 弹窗，显示处理进度 |
 | 来源详情 | `/kb/{kb_slug}/sources/[id]` | 原始内容 + 生成的 wiki 页面列表 |
 | RSS 管理 | `/kb/{kb_slug}/rss` | 当前知识库的 RSS 订阅源列表、添加/编辑/删除订阅 |
 | RSS 详情 | `/kb/{kb_slug}/rss/[id]` | 单个订阅源详情、抓取历史、已归档文章列表 |
@@ -308,6 +315,16 @@ tags: [标签1, 标签2]
 
 ## 数据库设计
 
+### users（用户表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| email | string, unique | 邮箱（登录凭据） |
+| username | string, unique | 用户名 |
+| hashed_password | string | bcrypt 哈希后的密码 |
+| is_active | boolean | 是否激活（默认 true） |
+| created_at / updated_at | datetime | 创建/更新时间 |
+
 ### knowledge_bases（知识库表）
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -331,6 +348,7 @@ tags: [标签1, 标签2]
 | title | string | 文章标题 |
 | raw_content | text | 原始抓取的 Markdown |
 | status | enum | pending / processing / completed / failed |
+| token_usage | integer | Ingest 过程消耗的 LLM token 数（默认 0） |
 | fetched_at | datetime | 抓取时间 |
 | created_at / updated_at | datetime | 创建/更新时间 |
 
@@ -342,7 +360,7 @@ tags: [标签1, 标签2]
 | name | string | 订阅源名称（如「FreeBuf 安全资讯」） |
 | url | string | RSS/Atom 订阅地址 |
 | feed_type | enum | rss / atom |
-| is_active | boolean | 是否启用（默认 true） |
+| is_active | boolean | 是否启用（默认 false，用户确认后启用） |
 | poll_interval | integer | 轮询间隔（分钟，默认 60） |
 | last_fetched_at | datetime | 上次抓取时间 |
 | last_fetch_status | enum | success / partial / failed |
@@ -388,7 +406,7 @@ tags: [标签1, 标签2]
 | id | UUID, PK | 主键 |
 | kb_id | UUID, FK | 所属知识库 |
 | name | string | 实体名称（同一知识库内唯一） |
-| type | enum | person / organization / tool / concept / event |
+| type | enum | person / organization / tool / topic / event |
 | aliases | string[] | 别名列表 |
 | wiki_page_id | UUID, FK | 关联 wiki 页面 |
 | created_at / updated_at | datetime | 创建/更新时间 |
@@ -412,7 +430,7 @@ tags: [标签1, 标签2]
 | trigger_type | enum | manual（手动提交 URL）/ rss（RSS 推送） |
 | title | string | 通知标题（如「新知识入库：文章标题」） |
 | summary | text | LLM 生成的当前文档知识内容总结 |
-| related_points | JSON | 关联知识点列表，每项包含：`{kb_slug, wiki_page_slug, title, relation_desc}` |
+| related_points | JSON | 关联知识点列表（仅限同一知识库内的 wiki 页面），每项包含：`{wiki_page_slug, title, relation_desc}` |
 | is_read | boolean | 是否已读（默认 false） |
 | created_at | datetime | 创建时间 |
 
@@ -515,7 +533,7 @@ class LLMProvider(Protocol):
 - 在 Redis 中缓存 wiki 索引（避免每次查询重新读取）
 - 实体提取使用结构化输出（JSON mode）以减少 token 消耗
 - 向 LLM 输入上下文时批量合并小页面
-- 在活动日志中按来源记录 token 使用量
+- 在来源表和生成文档表中记录 token 使用量（`sources.token_usage`、`generated_docs.token_usage`）
 
 ---
 
@@ -554,7 +572,6 @@ class LLMProvider(Protocol):
   "summary": "本文主要讲述了...(3-5句核心总结)",
   "related_points": [
     {
-      "kb_slug": "web-security",
       "wiki_page_slug": "xss-attack",
       "title": "XSS 攻击防护",
       "relation_desc": "本文提到的新型 XSS 变种与已有知识互补"
@@ -675,10 +692,7 @@ pytest --cov=app tests/
 
 ### 硬编码禁令
 
-- **代码中绝不出现明文密钥、密码或配置值。** 所有敏感信息和配置项必须通过环境变量或 `.env` 文件注入，通过 `config.py` 统一读取。
-- **不信任任何硬编码。** 端口号、API 地址、数据库名、模型名称、轮询间隔 —— 全部走配置。
-- **`.env` 只提供 `.env.example` 模板。** 实际 `.env` 文件在 `.gitignore` 中，不进入版本控制。
-- **测试代码同样不允许硬编码真实密钥。** 测试使用 mock 或专门的测试环境变量。
+详见下方「Lint 规则 → 硬编码禁令」。
 
 ---
 
@@ -705,7 +719,7 @@ pytest --cov=app tests/
 - **显式优于隐式** — 函数签名必须用 type hints 声明参数和返回类型。禁止 `**kwargs` 透传（除非是框架要求的中间件）。枚举值、配置项要有明确的含义。
 - **最小惊讶原则** — 函数名必须准确描述行为。`get_source()` 就只获取，不会触发副作用。需要触发摄入的叫 `ingest_source()`。
 - **错误优先处理** — 函数开头先校验参数、先处理异常情况，尽早 `raise` 或 `return`。减少正常逻辑的嵌套层级。
-- **无副作用** — 纯计算函数（如 SM-2 算法计算、Markdown 解析）必须是纯函数——相同输入永远返回相同输出。有副作用的操作（写数据库、调 LLM、写文件）集中在 Service 层。
+- **无副作用** — 纯计算函数（如 slug 生成、Markdown 解析）必须是纯函数——相同输入永远返回相同输出。有副作用的操作（写数据库、调 LLM、写文件）集中在 Service 层。
 
 ### 架构原则
 
@@ -777,7 +791,6 @@ pytest --cov=app tests/
 - **禁止 `any` 类型** — 使用正确的 TypeScript 类型
 - **禁止内联样式** — 使用 Tailwind 工具类
 - **禁止页面组件中直接 `fetch`** — 统一通过 `src/api/client.ts` 封装调用
-- **禁止前端业务逻辑** — 过滤、排序、计算、数据转换全部由后端 API 完成
 - **组件不超过 200 行** — 拆分为更小的组件
 
 ### Wiki 内容
