@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router";
+import { Routes, Route, Link } from "react-router";
 import Layout from "./components/Layout";
 import Chat from "./pages/Chat";
 import Dashboard from "./pages/Dashboard";
@@ -16,6 +16,18 @@ import WikiBrowser from "./pages/WikiBrowser";
 import WikiDetail from "./pages/WikiDetail";
 import GraphView from "./pages/GraphView";
 import Login from "./pages/Login";
+
+function NotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center h-[60vh]">
+      <h1 className="text-6xl font-bold text-gray-300">404</h1>
+      <p className="text-lg text-gray-500 mt-4">页面不存在</p>
+      <Link to="/" className="mt-6 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+        返回首页
+      </Link>
+    </div>
+  );
+}
 
 export default function App() {
   return (
@@ -37,8 +49,8 @@ export default function App() {
         <Route path="generate" element={<Generate />} />
         <Route path="generate/history" element={<GenerateHistory />} />
         <Route path="generate/history/:docId" element={<GenerateHistory />} />
+        <Route path="*" element={<NotFound />} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
       <Route path="login" element={<Login />} />
     </Routes>
   );
