@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class WikiPageResponse(BaseModel):
@@ -38,7 +38,7 @@ class WikiGraphData(BaseModel):
 
 
 class WikiQueryRequest(BaseModel):
-    question: str
+    question: str = Field(min_length=1, max_length=2000)
 
 
 class WikiQueryResponse(BaseModel):
@@ -47,12 +47,12 @@ class WikiQueryResponse(BaseModel):
 
 
 class SemanticSearchRequest(BaseModel):
-    query: str
-    limit: int = 10
+    query: str = Field(min_length=1, max_length=2000)
+    limit: int = Field(default=10, ge=1, le=50)
 
 
 class WikiPageUpdate(BaseModel):
-    content: str
+    content: str = Field(min_length=1)
     title: str | None = None
     outgoing_links: list[str] | None = None
 
