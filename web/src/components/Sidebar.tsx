@@ -14,6 +14,12 @@ export default function Sidebar() {
     queryFn: () => api.get("/knowledge-bases"),
   });
 
+  const { data: unreadData } = useQuery<{ unread_count: number }>({
+    queryKey: ["unreadCount"],
+    queryFn: () => api.get("/notifications/unread-count"),
+    refetchInterval: 30_000,
+  });
+
   const currentKb = knowledgeBases.find((kb) => kb.slug === kbSlug);
 
   if (kbSlug && currentKb) {
@@ -57,6 +63,19 @@ export default function Sidebar() {
             }`}
           >
             📚 知识库管理
+          </Link>
+          <Link
+            to="/notifications"
+            className={`flex items-center justify-between px-3 py-2 rounded-md text-sm ${
+              location.pathname === "/notifications" ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            <span>🔔 通知</span>
+            {unreadData && unreadData.unread_count > 0 && (
+              <span className="px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">
+                {unreadData.unread_count}
+              </span>
+            )}
           </Link>
         </div>
 

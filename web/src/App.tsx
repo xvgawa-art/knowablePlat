@@ -3,11 +3,12 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import KnowledgeBases from "./pages/KnowledgeBases";
 import KbDetail from "./pages/KbDetail";
-import WikiBrowser from "./pages/WikiBrowser";
-import WikiDetail from "./pages/WikiDetail";
+import Notifications from "./pages/Notifications";
+import SourceDetail from "./pages/SourceDetail";
 import Sources from "./pages/Sources";
 import SubmitSource from "./pages/SubmitSource";
-import SourceDetail from "./pages/SourceDetail";
+import WikiBrowser from "./pages/WikiBrowser";
+import WikiDetail from "./pages/WikiDetail";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="kb/:kbSlug/sources" element={<Sources />} />
         <Route path="kb/:kbSlug/sources/submit" element={<SubmitSource />} />
         <Route path="kb/:kbSlug/sources/:sourceId" element={<SourceDetail />} />
+        <Route path="notifications" element={<Notifications />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

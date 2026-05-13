@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
+from app.api.global_notifications import router as global_notif_router
 from app.api.knowledge_bases import router as kb_router
 from app.api.notifications import router as notif_router
 from app.api.sources import router as sources_router
@@ -34,6 +35,7 @@ app.include_router(kb_router)
 app.include_router(sources_router)
 app.include_router(wiki_router)
 app.include_router(notif_router)
+app.include_router(global_notif_router)
 
 
 @app.get("/api/health")
