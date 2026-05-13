@@ -25,8 +25,8 @@ async def list_notifications(
     kb = await _get_kb(kb_slug, db)
     notif_repo = NotificationRepository(db)
     items = await notif_repo.list_by_kb(kb.id, unread_only=unread, offset=offset, limit=limit)
-    all_unread = await notif_repo.list_by_kb(kb.id, unread_only=True, limit=1000)
-    return NotificationListResponse(items=items, unread_count=len(all_unread))
+    unread_count = await notif_repo.count_unread(kb_id=kb.id)
+    return NotificationListResponse(items=items, unread_count=unread_count)
 
 
 @router.put("/{notification_id}/read", response_model=NotificationResponse)
