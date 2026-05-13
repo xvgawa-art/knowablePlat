@@ -35,6 +35,7 @@ export default function Sidebar() {
         { to: `/kb/${kbSlug}`, label: "概览", icon: "📊" },
         { to: `/kb/${kbSlug}/wiki`, label: "Wiki", icon: "📖" },
         { to: `/kb/${kbSlug}/sources`, label: "来源", icon: "📄" },
+        { to: `/kb/${kbSlug}/chat`, label: "对话", icon: "💬" },
         { to: `/kb/${kbSlug}/rss`, label: "RSS", icon: "📡" },
       ]
     : [];
@@ -72,6 +73,14 @@ export default function Sidebar() {
             }`}
           >
             🔧 工具装备库
+          </Link>
+          <Link
+            to="/generate"
+            className={`block px-3 py-2 rounded-md text-sm ${
+              location.pathname.startsWith("/generate") ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            ✨ 知识生成
           </Link>
           <Link
             to="/notifications"

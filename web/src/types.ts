@@ -66,3 +66,20 @@ export interface GraphData {
   nodes: { id: string; slug: string; title: string; type: string }[];
   edges: { source: string; target: string }[];
 }
+
+export interface ChatMessage {
+  question: string;
+  answer: string;
+  referenced_pages: { slug: string; title: string }[];
+}
+
+export interface GeneratedDoc {
+  id: string;
+  title: string;
+  topic: string;
+  content: string | null;
+  kb_ids: string[] | null;
+  status: "generating" | "completed" | "failed";
+  word_count: number;
+  created_at: string;
+}

@@ -24,6 +24,12 @@ export default function WikiBrowser() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Wiki 页面</h1>
+        <Link
+          to={`/kb/${kbSlug}/wiki/graph`}
+          className="text-sm text-blue-600 hover:text-blue-800"
+        >
+          图谱视图
+        </Link>
       </div>
 
       {isLoading ? (
