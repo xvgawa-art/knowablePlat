@@ -12,10 +12,11 @@
 
 **技术栈：** Python 3.13 + FastAPI + PostgreSQL + Next.js + Redis
 
-**三层架构（Karpathy LLM-Wiki 模式）：**
-1. **Raw Sources（原始来源层）** — 不可变的源文档（抓取的文章、PDF、用户笔记）。LLM 只读不写。
-2. **The Wiki（Wiki 层）** — LLM 生成的结构化 Markdown：摘要页、实体页、概念页、对比页、交叉引用。LLM 完全拥有这一层。
-3. **The Schema（Schema 层）** — 本 CLAUDE.md + 配置文件，告诉 LLM wiki 的结构、约定和操作流程。
+**多层架构（Karpathy LLM-Wiki 模式 + 知识库分类）：**
+1. **Knowledge Bases（知识库层）** — 用户创建的独立知识库（如「Web 安全」「鸿蒙安全」「AI 安全」），每个知识库拥有独立的 wiki 空间、来源集合和学习队列。知识库之间互不干扰。
+2. **Raw Sources（原始来源层）** — 不可变的源文档（抓取的文章、PDF、用户笔记）。归属于某个知识库。LLM 只读不写。
+3. **The Wiki（Wiki 层）** — 每个知识库下独立的 LLM 生成 Markdown：摘要页、实体页、概念页、对比页、交叉引用。LLM 完全拥有这一层。
+4. **The Schema（Schema 层）** — 本 CLAUDE.md + 配置文件，告诉 LLM wiki 的结构、约定和操作流程。
 
 ---
 
@@ -42,11 +43,13 @@ knowableplat/
 │   │   ├── main.py            # FastAPI 入口
 │   │   ├── config.py          # 配置 & 环境变量
 │   │   ├── models/            # 数据模型
+│   │   │   ├── knowledge_base.py  # 知识库
 │   │   │   ├── source.py      # 原始来源文档
 │   │   │   ├── wiki_page.py   # Wiki 页面
 │   │   │   ├── entity.py      # 实体（人物、概念、组织）
 │   │   │   └── log.py         # 操作日志
 │   │   ├── api/               # REST API 路由
+│   │   │   ├── knowledge_bases.py  # 知识库 CRUD
 │   │   │   ├── sources.py     # 来源 CRUD + URL 抓取
 │   │   │   ├── wiki.py        # Wiki 浏览/搜索/查询
 │   │   │   ├── learn.py       # 学习 & 测验
@@ -66,15 +69,17 @@ knowableplat/
 │   │   │   ├── lint_contradictions.md # 检测页面间矛盾
 │   │   │   ├── learn_quiz.md          # 从 wiki 内容生成测验题
 │   │   │   └── learn_flashcard.md     # 生成闪卡
-│   │   ├── wiki/              # Wiki 层（LLM 生成的 Markdown）
-│   │   │   ├── index.md       # 内容目录（每次 ingest 自动更新）
-│   │   │   ├── log.md         # 按时间排列的活动日志
-│   │   │   ├── entities/      # 实体页面（人物、组织、工具）
-│   │   │   ├── concepts/      # 概念/主题页面
-│   │   │   ├── comparisons/   # 对比 & 分析页面
-│   │   │   └── sources/       # 来源摘要页面
-│   │   └── raw/               # 原始来源文档（不可变）
-│   │       └── assets/        # 下载的图片
+│   │   ├── wiki/              # Wiki 层（按知识库隔离）
+│   │   │   └── {kb_slug}/     # 每个知识库独立的 wiki 空间
+│   │   │       ├── index.md   # 该知识库的内容目录
+│   │   │       ├── log.md     # 该知识库的活动日志
+│   │   │       ├── entities/  # 实体页面
+│   │   │       ├── concepts/  # 概念/主题页面
+│   │   │       ├── comparisons/  # 对比 & 分析页面
+│   │   │       └── sources/   # 来源摘要页面
+│   │   └── raw/               # 原始来源文档（不可变，按知识库隔离）
+│   │       └── {kb_slug}/     # 每个知识库的原始文档
+│   │           └── assets/    # 下载的图片
 │   ├── tests/
 │   ├── alembic/               # 数据库迁移
 │   └── alembic.ini
@@ -109,25 +114,27 @@ knowableplat/
 ## 网页端页面设计
 
 ### 整体布局
-- **左侧：** 固定侧边导航栏（Wiki、来源、学习、对话）
-- **顶部：** 搜索栏 + 用户头像
-- **主区域：** 根据当前路由显示内容
+- **左侧：** 知识库选择器（顶部下拉）+ 固定侧边导航栏（Wiki、来源、学习、对话）
+- **顶部：** 搜索栏 + 当前知识库名称 + 用户头像
+- **主区域：** 根据当前路由显示内容，所有操作限定在当前选中的知识库范围内
 
 ### 页面列表
 
 | 页面 | 路由 | 功能 |
 |------|------|------|
-| 仪表盘 | `/` | 概览统计（来源数、wiki 页数、待复习数、最近活动） |
-| Wiki 浏览 | `/wiki` | wiki 页面列表，支持按类型/标签筛选，图谱视图切换 |
-| Wiki 详情 | `/wiki/[slug]` | 单个 wiki 页面内容、反向链接、相关页面 |
-| 来源列表 | `/sources` | 已提交的来源列表，状态（处理中/完成/失败） |
-| 提交来源 | `/sources` (modal) | 输入 URL 弹窗，显示处理进度 |
-| 来源详情 | `/sources/[id]` | 原始内容 + 生成的 wiki 页面列表 |
-| 学习首页 | `/learn` | 今日待复习、学习统计、连续打卡 |
-| 闪卡复习 | `/learn/review` | 滑动式闪卡，SM-2 评分 |
-| 测验 | `/learn/quiz/[slug]` | LLM 生成的测验题 |
-| 对话查询 | `/chat` | 自然语言问答，带 wiki 引用的回答 |
-| 图谱视图 | `/wiki/graph` | wiki 页面关系的力导向图可视化 |
+| 仪表盘 | `/` | 全局概览（知识库列表、各库统计、最近活动） |
+| 知识库详情 | `/kb/{kb_slug}` | 单个知识库的仪表盘（来源数、wiki 页数、待复习数） |
+| 知识库管理 | `/kb` | 创建/编辑/删除知识库，列表展示 |
+| Wiki 浏览 | `/kb/{kb_slug}/wiki` | 当前知识库的 wiki 页面列表，按类型/标签筛选，图谱视图切换 |
+| Wiki 详情 | `/kb/{kb_slug}/wiki/[slug]` | 单个 wiki 页面内容、反向链接、相关页面 |
+| 来源列表 | `/kb/{kb_slug}/sources` | 当前知识库的来源列表，状态（处理中/完成/失败） |
+| 提交来源 | `/kb/{kb_slug}/sources` (modal) | 输入 URL 弹窗，选择目标知识库，显示处理进度 |
+| 来源详情 | `/kb/{kb_slug}/sources/[id]` | 原始内容 + 生成的 wiki 页面列表 |
+| 学习首页 | `/kb/{kb_slug}/learn` | 当前知识库的待复习、学习统计、连续打卡 |
+| 闪卡复习 | `/kb/{kb_slug}/learn/review` | 滑动式闪卡，SM-2 评分 |
+| 测验 | `/kb/{kb_slug}/learn/quiz/[slug]` | LLM 生成的测验题 |
+| 对话查询 | `/kb/{kb_slug}/chat` | 在当前知识库上下文中问答，带 wiki 引用的回答 |
+| 图谱视图 | `/kb/{kb_slug}/wiki/graph` | 当前知识库的 wiki 页面关系力导向图 |
 
 ### 响应式设计
 - 桌面端（>= 1024px）：完整侧边栏 + 宽内容区
@@ -140,27 +147,27 @@ knowableplat/
 
 ### Ingest（摄入）流水线
 
-当用户提交一个 URL：
+当用户向某个知识库提交一个 URL：
 
 1. **抓取（Fetch）** — 使用 Firecrawl/Jina Reader 将 URL 转为干净的 Markdown
-2. **存储原始内容** — 保存到 `raw/` 目录（不可变），在 `sources` 表中记录
+2. **存储原始内容** — 保存到 `raw/{kb_slug}/` 目录（不可变），在 `sources` 表中记录，关联 `kb_id`
 3. **提取（Extract）** — LLM 阅读来源，提取关键实体、概念、论点
-4. **撰写摘要页** — 创建 `wiki/sources/<slug>.md` 结构化摘要
-5. **更新实体页** — 创建或更新 `wiki/entities/<entity>.md`
-6. **更新概念页** — 创建或更新 `wiki/concepts/<topic>.md`
-7. **交叉引用** — 将新内容与已有 wiki 页面链接（双向 `[[wikilinks]]`）
-8. **更新索引** — 刷新 `wiki/index.md` 加入新条目
-9. **追加日志** — 向 `wiki/log.md` 添加条目：`## [YYYY-MM-DD] ingest | 文章标题`
-10. **标记矛盾** — 如果新来源与已有论点矛盾，创建 `wiki/comparisons/` 对比页
+4. **撰写摘要页** — 创建 `wiki/{kb_slug}/sources/<slug>.md` 结构化摘要
+5. **更新实体页** — 创建或更新 `wiki/{kb_slug}/entities/<entity>.md`
+6. **更新概念页** — 创建或更新 `wiki/{kb_slug}/concepts/<topic>.md`
+7. **交叉引用** — 将新内容与**同一知识库内**的已有 wiki 页面链接（双向 `[[wikilinks]]`）
+8. **更新索引** — 刷新 `wiki/{kb_slug}/index.md` 加入新条目
+9. **追加日志** — 向 `wiki/{kb_slug}/log.md` 添加条目：`## [YYYY-MM-DD] ingest | 文章标题`
+10. **标记矛盾** — 如果新来源与同一知识库内已有论点矛盾，创建 `wiki/{kb_slug}/comparisons/` 对比页
 
 一个来源可能涉及 10-15 个 wiki 页面。LLM 完成所有交叉引用和维护工作。
 
 ### Query（查询）流水线
 
-当用户提出问题：
+当用户在某个知识库中提出问题：
 
-1. **读取索引** — LLM 先读 `wiki/index.md` 找到相关页面
-2. **深入阅读** — 读取与问题相关的具体 wiki 页面
+1. **读取索引** — LLM 先读 `wiki/{kb_slug}/index.md` 找到相关页面
+2. **深入阅读** — 读取**同一知识库内**与问题相关的具体 wiki 页面
 3. **综合回答** — 生成带 `[[wikilink]]` 引用的回答
 4. **可选：归档回答** — 如果回答有价值（对比、分析），保存为新的 wiki 页面
 
@@ -180,9 +187,9 @@ LLM 擅长建议新的调查问题和新的来源。这让 wiki 在增长过程�
 
 ### 索引与日志
 
-**`wiki/index.md`** — 内容目录。按类别组织，每个页面列出链接、一行摘要、可选元数据（日期、来源数量）。LLM 每次查询先读索引定位相关页面。在中等规模（~100 个来源、~数百页面）下效果很好，无需向量 RAG 基础设施。
+**`wiki/{kb_slug}/index.md`** — 每个知识库有独立的内容目录。按类别组织，每个页面列出链接、一行摘要、可选元数据（日期、来源数量）。LLM 每次查询先读索引定位相关页面。在中等规模（~100 个来源、~数百页面）下效果很好，无需向量 RAG 基础设施。
 
-**`wiki/log.md`** — 按时间排列的活动日志。只追加。统一前缀格式：`## [YYYY-MM-DD] ingest | 文章标题`。可用简单工具解析：`grep "^## \[" wiki/log.md | tail -5`。
+**`wiki/{kb_slug}/log.md`** — 每个知识库有独立的活动日志。只追加。统一前缀格式：`## [YYYY-MM-DD] ingest | 文章标题`。可用简单工具解析：`grep "^## \[" wiki/{kb_slug}/log.md | tail -5`。
 
 ---
 
@@ -224,11 +231,26 @@ tags: [标签1, 标签2]
 
 ## 数据库设计
 
+### knowledge_bases（知识库表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| name | string, unique | 知识库名称（如「Web 安全」「AI 安全」） |
+| slug | string, unique | URL 友好标识符（如 `web-security`） |
+| description | text | 知识库描述 |
+| icon | string | 图标标识（可选） |
+| color | string | 主题色（可选，用于 UI 区分） |
+| is_public | boolean | 是否公开（默认 false） |
+| source_count | integer | 来源总数（反规范化，定期更新） |
+| wiki_page_count | integer | Wiki 页面总数（反规范化） |
+| created_at / updated_at | datetime | 创建/更新时间 |
+
 ### sources（来源表）
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID, PK | 主键 |
-| url | string, unique | 来源 URL |
+| kb_id | UUID, FK | 所属知识库 |
+| url | string | 来源 URL（同一知识库内唯一） |
 | title | string | 文章标题 |
 | raw_content | text | 原始抓取的 Markdown |
 | status | enum | pending / processing / completed / failed |
@@ -239,7 +261,8 @@ tags: [标签1, 标签2]
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID, PK | 主键 |
-| slug | string, unique | URL 友好标识符 |
+| kb_id | UUID, FK | 所属知识库 |
+| slug | string | URL 友好标识符（同一知识库内唯一） |
 | title | string | 页面标题 |
 | type | enum | source / entity / concept / comparison / answer |
 | content | text | Markdown 内容 |
@@ -253,7 +276,8 @@ tags: [标签1, 标签2]
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID, PK | 主键 |
-| name | string, unique | 实体名称 |
+| kb_id | UUID, FK | 所属知识库 |
+| name | string | 实体名称（同一知识库内唯一） |
 | type | enum | person / organization / tool / concept / event |
 | aliases | string[] | 别名列表 |
 | wiki_page_id | UUID, FK | 关联 wiki 页面 |
@@ -263,6 +287,7 @@ tags: [标签1, 标签2]
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID, PK | 主键 |
+| kb_id | UUID, FK | 所属知识库 |
 | action | enum | ingest / query / lint / update |
 | target | string | 页面 slug 或来源 URL |
 | details | JSON | 操作元数据 |
@@ -284,24 +309,31 @@ tags: [标签1, 标签2]
 
 ## API 设计
 
-### 来源管理
-- `POST /api/sources` — 提交 URL 进行摄入（异步任务）
-- `GET /api/sources` — 列出所有来源（分页）
-- `GET /api/sources/{id}` — 获取来源详情 + 原始内容
-- `DELETE /api/sources/{id}` — 删除来源及关联 wiki 页面
+### 知识库管理
+- `POST /api/knowledge-bases` — 创建知识库（名称、描述、图标、颜色）
+- `GET /api/knowledge-bases` — 列出所有知识库（含统计摘要）
+- `GET /api/knowledge-bases/{kb_slug}` — 获取知识库详情 + 统计
+- `PUT /api/knowledge-bases/{kb_slug}` — 更新知识库信息
+- `DELETE /api/knowledge-bases/{kb_slug}` — 删除知识库及全部关联数据
 
-### Wiki 操作
-- `GET /api/wiki` — 列出 wiki 页面（可按类型、标签、搜索过滤）
-- `GET /api/wiki/{slug}` — 获取 wiki 页面内容 + 反向链接
-- `GET /api/wiki/graph` — 获取链接图谱数据（用于可视化）
-- `POST /api/wiki/query` — 提问，获取带引用的综合回答
-- `POST /api/wiki/lint` — 触发 wiki 健康检查
+### 来源管理（知识库范围内）
+- `POST /api/kb/{kb_slug}/sources` — 向指定知识库提交 URL 进行摄入（异步任务）
+- `GET /api/kb/{kb_slug}/sources` — 列出该知识库的所有来源（分页）
+- `GET /api/kb/{kb_slug}/sources/{id}` — 获取来源详情 + 原始内容
+- `DELETE /api/kb/{kb_slug}/sources/{id}` — 删除来源及关联 wiki 页面
 
-### 学习系统
-- `GET /api/learn/due` — 获取今日待复习页面
-- `POST /api/learn/review` — 提交复习结果（更新 SM-2 调度）
-- `GET /api/learn/quiz/{slug}` — 为 wiki 页面生成测验题
-- `GET /api/learn/stats` — 用户学习统计
+### Wiki 操作（知识库范围内）
+- `GET /api/kb/{kb_slug}/wiki` — 列出该知识库的 wiki 页面（可按类型、标签、搜索过滤）
+- `GET /api/kb/{kb_slug}/wiki/{slug}` — 获取 wiki 页面内容 + 反向链接
+- `GET /api/kb/{kb_slug}/wiki/graph` — 获取该知识库的链接图谱数据
+- `POST /api/kb/{kb_slug}/wiki/query` — 在该知识库上下文中提问
+- `POST /api/kb/{kb_slug}/wiki/lint` — 触发该知识库的 wiki 健康检查
+
+### 学习系统（知识库范围内）
+- `GET /api/kb/{kb_slug}/learn/due` — 获取该知识库今日待复习页面
+- `POST /api/kb/{kb_slug}/learn/review` — 提交复习结果（更新 SM-2 调度）
+- `GET /api/kb/{kb_slug}/learn/quiz/{slug}` — 为该知识库的 wiki 页面生成测验题
+- `GET /api/kb/{kb_slug}/learn/stats` — 该知识库的学习统计
 
 ### 认证
 - `POST /api/auth/register` — 注册
@@ -493,6 +525,7 @@ pytest --cov=app tests/
 
 ### Wiki 内容
 
+- **每个知识库独立 wiki 空间** — 不同知识库的页面、实体、来源互不干扰，交叉引用只在同一知识库内进行
 - **每个页面都有 frontmatter** — title, type, created, updated, sources, tags
 - **Wikilinks 是双向的** — 当页面 A 链接到 B 时，B 的 incoming_links 包含 A
 - **来源引用必须** — 每个论点都必须能追溯到原始来源
@@ -526,12 +559,13 @@ pytest --cov=app tests/
 ## 优先级 & 路线图
 
 ### 第一阶段 — 核心 Ingest & Wiki（MVP）
-1. URL 抓取服务（Firecrawl/Jina）
-2. 来源存储（数据库 + 文件系统）
-3. LLM Ingest 流水线（来源 → wiki 页面）
-4. Wiki 页面 CRUD API
-5. `index.md` + `log.md` 自动维护
-6. 基础网页 UI：提交 URL、浏览 wiki 页面
+1. 知识库管理（CRUD + 数据库模型）
+2. URL 抓取服务（Firecrawl/Jina）
+3. 来源存储（数据库 + 文件系统，按知识库隔离）
+4. LLM Ingest 流水线（来源 → wiki 页面，限定知识库范围）
+5. Wiki 页面 CRUD API（按知识库范围）
+6. `index.md` + `log.md` 自动维护（每个知识库独立）
+7. 基础网页 UI：知识库切换、提交 URL、浏览 wiki 页面
 
 ### 第二阶段 — 查询 & 搜索
 7. 对 wiki 的自然语言查询
