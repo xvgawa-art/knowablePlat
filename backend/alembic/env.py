@@ -11,6 +11,8 @@ from app.models.entity import Entity  # noqa: F401
 from app.models.knowledge_base import KnowledgeBase  # noqa: F401
 from app.models.log import ActivityLog  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
+from app.models.rss_entry import RssEntry  # noqa: F401
+from app.models.rss_feed import RssFeed  # noqa: F401
 from app.models.source import Source  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.wiki_page import WikiPage  # noqa: F401
