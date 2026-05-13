@@ -466,6 +466,18 @@ tags: [标签1, 标签2]
 
 ## LLM 集成
 
+### 当前模型配置
+
+本平台使用智谱 AI 提供的 Anthropic 兼容接口：
+
+| 配置项 | 环境变量 | 说明 |
+|--------|----------|------|
+| API 地址 | `ANTHROPIC_BASE_URL` | `https://open.bigmodel.cn/api/anthropic` |
+| 认证密钥 | `ANTHROPIC_AUTH_TOKEN` | 通过系统环境变量获取，**禁止硬编码** |
+| 模型名称 | `ANTHROPIC_MODEL` | `glm-5.1` |
+
+**所有敏感信息（API 密钥、数据库密码、Redis 密码等）必须通过环境变量或 `.env` 文件注入，代码中绝不出现明文。** 详见下方「硬编码禁令」。
+
 ### Provider 抽象
 
 通过统一接口支持多个 LLM 提供商：
@@ -476,7 +488,7 @@ class LLMProvider(Protocol):
     async def generate_structured(self, prompt: str, schema: type[BaseModel]) -> BaseModel: ...
 ```
 
-默认：Anthropic Claude（Sonnet 用于 wiki 生成，Haiku 用于快速查询）。
+默认使用智谱 AI 的 `glm-5.1` 模型（通过 Anthropic 兼容接口调用）。
 
 ### Token 管理
 
@@ -595,6 +607,13 @@ pytest --cov=app tests/
 
 - **所有文档必须使用中文编写。** `docs/` 目录下的文档、代码注释、README 等，均须使用中文。代码标识符（变量名、函数名、类名）保持英文不变。
 
+### 硬编码禁令
+
+- **代码中绝不出现明文密钥、密码或配置值。** 所有敏感信息和配置项必须通过环境变量或 `.env` 文件注入，通过 `config.py` 统一读取。
+- **不信任任何硬编码。** 端口号、API 地址、数据库名、模型名称、轮询间隔 —— 全部走配置。
+- **`.env` 只提供 `.env.example` 模板。** 实际 `.env` 文件在 `.gitignore` 中，不进入版本控制。
+- **测试代码同样不允许硬编码真实密钥。** 测试使用 mock 或专门的测试环境变量。
+
 ---
 
 ## 代码风格
@@ -633,9 +652,16 @@ pytest --cov=app tests/
 - **ruff：** line-length 120，目标 Python 3.13
 - **禁止裸 except** — 必须指定异常类型
 - **禁止 print 语句** — 使用 `structlog` 日志
-- **禁止硬编码密钥** — 使用环境变量或 `.env`
 - **所有函数签名必须有 type hints**
 - **测试必须是异步的** — 使用 `pytest-asyncio`
+
+### 硬编码禁令（前后端通用）
+
+- **禁止硬编码任何敏感信息** — API 密钥、数据库密码、Redis 密码、JWT 密钥、第三方服务密钥等，一律通过环境变量或 `.env` 文件注入
+- **禁止硬编码配置值** — 端口号、主机地址、数据库名、轮询间隔等配置项，必须从 `config.py` / 环境变量读取，不允许在业务代码中直接写死
+- **禁止硬编码 URL** — 外部 API 地址（如 Firecrawl、Jina、LLM API）必须通过配置文件管理
+- **`.env` 文件不纳入版本控制** — `.env` 加入 `.gitignore`，只提供 `.env.example` 作为模板
+- **违反硬编码禁令的代码不予合并** — 任何包含明文密钥、硬编码配置的代码都必须修改后才能提交
 
 ### 前端
 
