@@ -160,16 +160,24 @@
 ## 通知
 
 ### GET /api/notifications
-获取通知列表。支持 `?unread=true`、`?kb_id=` 过滤。
+获取全局通知列表。支持 `?unread=true` 过滤未读、`?offset=` 和 `?limit=` 分页。
+
+**响应**: 每条通知包含 `kb_slug` 字段，可用于构建关联知识库的 Wiki 页面链接。
 
 ### GET /api/notifications/unread-count
 获取未读数量。
 
 ### GET /api/notifications/{id}
-获取通知详情。
+获取通知详情（含 `kb_slug`）。
 
 ### PUT /api/notifications/{id}/read
 标记已读。
 
 ### PUT /api/notifications/read-all
-全部标记已读。支持 `?kb_id=` 按知识库。
+全部标记已读。
+
+### GET /api/kb/{kb_slug}/notifications
+获取指定知识库的通知列表。
+
+### PUT /api/kb/{kb_slug}/notifications/read-all
+标记指定知识库全部通知已读。
