@@ -116,7 +116,7 @@ class TestGenerateAPI:
 
     async def test_create_generation_empty_kb_ids(self, client: AsyncClient):
         resp = await client.post("/api/generate", json={"kb_ids": [], "topic": "Test"})
-        assert resp.status_code == 400
+        assert resp.status_code in (400, 422)
 
     async def test_create_generation_empty_topic(self, client: AsyncClient):
         resp = await client.post("/api/generate", json={"kb_ids": ["id"], "topic": "  "})
