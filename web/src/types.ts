@@ -23,6 +23,7 @@ export interface Source {
 
 export interface SourceDetail extends Source {
   raw_content: string | null;
+  token_usage: number;
 }
 
 export interface WikiPage {

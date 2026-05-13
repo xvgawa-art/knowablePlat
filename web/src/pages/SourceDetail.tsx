@@ -1,4 +1,4 @@
-import { useParams } from "react-router";
+import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
@@ -44,6 +44,12 @@ export default function SourceDetail() {
 
   return (
     <div className="p-8 max-w-4xl">
+      <div className="mb-4">
+        <Link to={`/kb/${kbSlug}/sources`} className="text-sm text-blue-600 hover:text-blue-800">
+          ← 返回来源列表
+        </Link>
+      </div>
+
       <h1 className="text-2xl font-bold text-gray-900 mb-4">
         {source.title ?? "未命名来源"}
       </h1>
@@ -58,6 +64,10 @@ export default function SourceDetail() {
         >
           {source.url}
         </a>
+        <span>{new Date(source.created_at).toLocaleString("zh-CN")}</span>
+        {source.token_usage > 0 && (
+          <span>Token 消耗: {source.token_usage.toLocaleString()}</span>
+        )}
         {source.status === "failed" && (
           <button
             onClick={() => { setRetrying(true); retryMutation.mutate(); }}
