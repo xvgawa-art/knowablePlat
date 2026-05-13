@@ -15,18 +15,28 @@ const TYPE_LABELS: Record<string, string> = {
 
 type SearchMode = "keyword" | "semantic";
 
+const TYPE_COLORS: Record<string, string> = {
+  source: "bg-blue-100 text-blue-700",
+  entity: "bg-green-100 text-green-700",
+  concept: "bg-purple-100 text-purple-700",
+  comparison: "bg-yellow-100 text-yellow-700",
+  tool: "bg-red-100 text-red-700",
+  tool_category: "bg-pink-100 text-pink-700",
+};
+
 export default function WikiBrowser() {
   const { kbSlug } = useParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("keyword");
   const [activeSearch, setActiveSearch] = useState("");
   const [activeMode, setActiveMode] = useState<SearchMode>("keyword");
+  const [filterType, setFilterType] = useState<string | null>(null);
 
   const isSearching = activeSearch.length > 0;
 
   const { data: pages = [], isLoading } = useQuery<WikiPageListItem[]>({
-    queryKey: ["wikiPages", kbSlug],
-    queryFn: () => api.get(`/kb/${kbSlug}/wiki`),
+    queryKey: ["wikiPages", kbSlug, filterType],
+    queryFn: () => api.get(`/kb/${kbSlug}/wiki`, { ...(filterType ? { page_type: filterType } : {}), limit: 50 }),
     enabled: !!kbSlug && !isSearching,
   });
 
@@ -113,6 +123,34 @@ export default function WikiBrowser() {
         )}
       </form>
 
+      {!isSearching && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setFilterType(null)}
+            className={`px-3 py-1 text-xs rounded-full ${
+              filterType === null ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            全部
+          </button>
+          {Object.entries(TYPE_LABELS).map(([type, label]) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setFilterType(filterType === type ? null : type)}
+              className={`px-3 py-1 text-xs rounded-full ${
+                filterType === type
+                  ? TYPE_COLORS[type] ?? "bg-gray-800 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {isSearching && (
         <p className="text-sm text-gray-500 mb-4">
           {activeMode === "semantic" ? "语义" : "关键词"}搜索: "{activeSearch}" — 找到 {searchResults.length} 个结果
@@ -135,11 +173,13 @@ export default function WikiBrowser() {
             >
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">{page.title}</h3>
-                <span className="text-xs px-2 py-1 bg-gray-100 rounded-full">
+                <span className={`text-xs px-2 py-1 rounded-full ${TYPE_COLORS[page.page_type] ?? "bg-gray-100 text-gray-600"}`}>
                   {TYPE_LABELS[page.page_type] ?? page.page_type}
                 </span>
               </div>
-              <p className="text-sm text-gray-500 mt-1">{page.slug}</p>
+              <p className="text-sm text-gray-400 mt-1">
+                {new Date(page.created_at).toLocaleDateString("zh-CN")}
+              </p>
             </Link>
           ))}
         </div>
