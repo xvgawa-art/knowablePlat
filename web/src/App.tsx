@@ -7,6 +7,7 @@ import Notifications from "./pages/Notifications";
 import SourceDetail from "./pages/SourceDetail";
 import Sources from "./pages/Sources";
 import SubmitSource from "./pages/SubmitSource";
+import ToolArsenal from "./pages/ToolArsenal";
 import WikiBrowser from "./pages/WikiBrowser";
 import WikiDetail from "./pages/WikiDetail";
 
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="kb/:kbSlug/sources/submit" element={<SubmitSource />} />
         <Route path="kb/:kbSlug/sources/:sourceId" element={<SourceDetail />} />
         <Route path="notifications" element={<Notifications />} />
+        <Route path="tools" element={<ToolArsenal />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

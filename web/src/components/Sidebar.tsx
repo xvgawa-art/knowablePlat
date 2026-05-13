@@ -65,6 +65,14 @@ export default function Sidebar() {
             📚 知识库管理
           </Link>
           <Link
+            to="/tools"
+            className={`block px-3 py-2 rounded-md text-sm ${
+              location.pathname === "/tools" ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            🔧 工具装备库
+          </Link>
+          <Link
             to="/notifications"
             className={`flex items-center justify-between px-3 py-2 rounded-md text-sm ${
               location.pathname === "/notifications" ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"
