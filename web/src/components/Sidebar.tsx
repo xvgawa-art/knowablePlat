@@ -1,4 +1,4 @@
-import { Link, useParams, useLocation } from "react-router";
+import { Link, useParams, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useAppStore } from "../store";
 import { api } from "../api/client";
@@ -7,6 +7,7 @@ import type { KnowledgeBase } from "../types";
 export default function Sidebar() {
   const { kbSlug } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const { sidebarOpen, setCurrentKbSlug } = useAppStore();
 
   const { data: knowledgeBases = [] } = useQuery<KnowledgeBase[]>({
@@ -125,7 +126,7 @@ export default function Sidebar() {
           value={kbSlug ?? ""}
           onChange={(e) => {
             if (e.target.value) {
-              window.location.href = `/kb/${e.target.value}`;
+              navigate(`/kb/${e.target.value}`);
             }
           }}
         >
@@ -142,7 +143,7 @@ export default function Sidebar() {
             <button
               onClick={() => {
                 localStorage.removeItem("token");
-                window.location.href = "/login";
+                navigate("/login");
               }}
               className="w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md"
             >
