@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { WikiPageListItem } from "../types";
@@ -29,12 +30,12 @@ export default function ToolArsenal() {
           <p className="text-sm text-gray-400">
             向工具装备库提交工具 URL，系统会自动提取信息并归类
           </p>
-          <a
-            href="/kb/tool-arsenal/sources/submit"
+          <Link
+            to="/kb/tool-arsenal/sources/submit"
             className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
             提交工具 URL
-          </a>
+          </Link>
         </div>
       ) : (
         <>
@@ -43,14 +44,14 @@ export default function ToolArsenal() {
               <h2 className="text-lg font-semibold text-gray-800 mb-3">工具分类</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {categories.map((cat) => (
-                  <a
+                  <Link
                     key={cat.id}
-                    href={`/kb/tool-arsenal/wiki/${cat.slug}`}
+                    to={`/kb/tool-arsenal/wiki/${cat.slug}`}
                     className="block p-4 bg-white rounded-lg border border-gray-200 hover:shadow-md"
                   >
                     <h3 className="font-semibold text-gray-900">{cat.title}</h3>
                     <p className="text-sm text-gray-500 mt-1">{cat.slug}</p>
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -66,9 +67,9 @@ export default function ToolArsenal() {
                     color: "bg-gray-100",
                   };
                   return (
-                    <a
+                    <Link
                       key={tool.id}
-                      href={`/kb/tool-arsenal/wiki/${tool.slug}`}
+                      to={`/kb/tool-arsenal/wiki/${tool.slug}`}
                       className="block p-4 bg-white rounded-lg border border-gray-200 hover:shadow-md"
                     >
                       <div className="flex items-center justify-between">
@@ -77,7 +78,7 @@ export default function ToolArsenal() {
                           {typeInfo.label}
                         </span>
                       </div>
-                    </a>
+                    </Link>
                   );
                 })}
               </div>
