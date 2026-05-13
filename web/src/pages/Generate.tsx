@@ -17,6 +17,11 @@ export default function Generate() {
   const { data: docs = [] } = useQuery<GeneratedDoc[]>({
     queryKey: ["generatedDocs"],
     queryFn: () => api.get("/generate"),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.some((d) => d.status === "generating")) return 5000;
+      return false;
+    },
   });
 
   const generateMutation = useMutation({
@@ -32,6 +37,7 @@ export default function Generate() {
   }
 
   async function handleDelete(docId: string) {
+    if (!confirm("确定删除此生成文档？")) return;
     await api.del(`/generate/${docId}`);
     queryClient.invalidateQueries({ queryKey: ["generatedDocs"] });
   }

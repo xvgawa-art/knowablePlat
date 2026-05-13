@@ -17,9 +17,15 @@ export default function GenerateHistory() {
     queryKey: ["generatedDoc", docId],
     queryFn: () => api.get(`/generate/${docId}`),
     enabled: !!docId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.status === "generating") return 5000;
+      return false;
+    },
   });
 
   async function handleDelete(id: string) {
+    if (!confirm("确定删除此生成文档？")) return;
     await api.del(`/generate/${id}`);
     queryClient.invalidateQueries({ queryKey: ["generatedDocs"] });
   }
