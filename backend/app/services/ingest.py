@@ -9,6 +9,7 @@ from app.models.entity import EntityType
 from app.models.log import ActionEnum
 from app.models.notification import TriggerType
 from app.models.wiki_page import WikiPage, WikiPageType
+from app.prompts.loader import load_prompt
 from app.repositories.activity_log import ActivityLogRepository
 from app.repositories.entity import EntityRepository
 from app.repositories.knowledge_base import KnowledgeBaseRepository
@@ -20,26 +21,9 @@ from app.services.llm import generate
 
 logger = structlog.get_logger()
 
-EXTRACT_SYSTEM = """你是一个知识提取助手。阅读以下文章内容，提取关键信息。
-
-请以 JSON 格式返回，包含以下字段：
-- title: 文章标题（简洁，50字以内）
-- summary: 文章摘要（200字以内）
-- key_points: 关键要点列表（每个要点一句话，最多10个）
-- entities: 提到的实体列表，每个实体包含 name（名称）和 type（类型：person/organization/tool/topic/event）
-- topics: 主题标签列表（最多5个）"""
-
-SYNTHESIZE_SYSTEM = """你是一个 wiki 页面撰写助手。根据提供的文章摘要和提取信息，撰写一篇结构化的 wiki 页面。
-
-格式要求：
-- 使用 Markdown 格式
-- 包含标题、概要、关键要点、详细内容、相关主题等章节
-- 使用 [[wikilinks]] 标记相关概念和实体
-- 内容客观、准确、有结构"""
-
-CROSSREF_SYSTEM = """你是一个知识关联分析助手。根据新页面内容和已有页面列表，找出应该互相链接的页面。
-
-请返回 JSON 数组格式，包含应该链接的页面 slug，如 ["slug1", "slug2"]。如果无关联页面，返回空数组 []。"""
+EXTRACT_SYSTEM = load_prompt("ingest_extract")
+SYNTHESIZE_SYSTEM = load_prompt("ingest_synthesize")
+CROSSREF_SYSTEM = load_prompt("ingest_crossref")
 
 
 def _slugify(text: str) -> str:

@@ -9,6 +9,7 @@ from app.models.entity import EntityType
 from app.models.log import ActionEnum
 from app.models.notification import TriggerType
 from app.models.wiki_page import WikiPageType
+from app.prompts.loader import load_prompt
 from app.repositories.activity_log import ActivityLogRepository
 from app.repositories.entity import EntityRepository
 from app.repositories.notification import NotificationRepository
@@ -18,35 +19,9 @@ from app.services.llm import generate
 
 logger = structlog.get_logger()
 
-TOOL_EXTRACT_SYSTEM = """你是一个安全工具信息提取助手。阅读以下工具介绍页面，提取结构化工具信息。
-
-请以 JSON 格式返回，包含以下字段：
-- name: 工具名称
-- description: 一句话简介
-- purpose: 核心用途（解决什么问题）
-- advantages: 相比同类工具的优势列表
-- scenarios: 典型使用场景列表
-- category: 所属分类（如：漏洞扫描、信息收集、逆向工程、Web安全、密码破解、无线安全、取证分析、社工、绕过防护）
-- homepage: 官方主页 URL（如有）
-- download_url: 下载链接（如有）
-- license: 许可证类型（如：MIT、GPL、商业、免费开源）
-- platforms: 支持平台列表（如：Windows、Linux、macOS）
-- tags: 标签列表（最多5个）"""
-
-TOOL_PAGE_SYSTEM = """你是一个工具 wiki 页面撰写助手。根据提取的工具信息，生成结构化的工具页面。
-
-格式要求：
-- 使用 Markdown 格式
-- 必须包含以下章节：简介、用途、优势、使用场景、快速上手、同类工具、来源
-- 使用 [[wikilinks]] 链接到同类工具和分类页面
-- 内容准确、实用"""
-
-CATEGORY_SYSTEM = """你是一个工具分类助手。根据工具信息，判断它属于哪个分类。
-
-返回 JSON，包含：
-- category: 分类名称（如：漏洞扫描、信息收集、逆向工程、Web安全、密码破解等）
-- category_slug: 分类的英文 slug（如：vuln-scanning、info-gathering、reverse-engineering）
-- scenario_recommendations: 场景推荐列表，每项包含 scenario（场景）和 recommended（推荐工具名）"""
+TOOL_EXTRACT_SYSTEM = load_prompt("tool_extract")
+TOOL_PAGE_SYSTEM = load_prompt("tool_recommend")
+CATEGORY_SYSTEM = load_prompt("tool_categorize")
 
 
 def _slugify(text: str) -> str:

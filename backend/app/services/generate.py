@@ -1,32 +1,13 @@
 import structlog
 
+from app.prompts.loader import load_prompt
 from app.services.llm import generate
 
 logger = structlog.get_logger()
 
-OUTLINE_SYSTEM = """你是一个文档规划助手。根据用户提供的主题和知识检索结果，规划一份文档大纲。
-
-请以 JSON 格式返回，包含以下字段：
-- title: 文档标题
-- sections: 章节列表，每个章节包含：
-  - heading: 章节标题
-  - key_points: 该章节应涵盖的要点列表"""
-
-SECTION_SYSTEM = """你是一个技术文档撰写助手。根据提供的章节大纲和参考知识，撰写该章节的完整内容。
-
-要求：
-- 使用 Markdown 格式
-- 内容详实、准确
-- 在适当位置标注引用来源：[来源：知识库名/wiki页面]
-- 语言流畅、有逻辑"""
-
-INTEGRATE_SYSTEM = """你是一个文档整合助手。将以下各章节内容整合为一份完整的文档。
-
-要求：
-- 添加标题、摘要、目录
-- 检查逻辑连贯性，消除重复
-- 统一风格和术语
-- 返回完整的 Markdown 文档"""
+OUTLINE_SYSTEM = load_prompt("generate_outline")
+SECTION_SYSTEM = load_prompt("generate_section")
+INTEGRATE_SYSTEM = load_prompt("generate_integrate")
 
 
 async def retrieve_knowledge(kb_ids: list[str], topic: str) -> str:

@@ -3,17 +3,13 @@ import uuid
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.prompts.loader import load_prompt
 from app.repositories.wiki_page import WikiPageRepository
 from app.services.llm import generate
 
 logger = structlog.get_logger()
 
-QUERY_SYSTEM = """你是一个知识助手。基于提供的 wiki 内容回答用户的问题。
-
-要求：
-- 回答要准确、有结构
-- 使用 [[wikilinks]] 引用相关概念
-- 如果无法从 wiki 内容中找到答案，请如实说明"""
+QUERY_SYSTEM = load_prompt("query_answer")
 
 
 async def answer_question(
