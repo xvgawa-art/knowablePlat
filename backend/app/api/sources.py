@@ -27,9 +27,11 @@ async def _get_kb(kb_slug: str, db: AsyncSession) -> KnowledgeBase:
 
 
 async def _ingest_source(source_id: uuid.UUID, kb_slug: str) -> None:
-    """Background task: fetch URL and store raw content."""
+    """Background task: fetch URL content, then run full ingest pipeline."""
     from app.database import async_sessionmaker
+    from app.services.ingest import run_ingest_pipeline
 
+    # Phase 1: Fetch raw content
     async with async_sessionmaker() as session:
         async with session.begin():
             repo = SourceRepository(session)
@@ -39,9 +41,13 @@ async def _ingest_source(source_id: uuid.UUID, kb_slug: str) -> None:
             try:
                 content = await fetch_url(source.url)
                 source.raw_content = content
-                source.status = SourceStatus.completed
+                source.status = SourceStatus.processing
             except Exception:
                 source.status = SourceStatus.failed
+
+    # Phase 2: Run ingest pipeline (extract, synthesize, cross-ref, index, log)
+    if source and source.raw_content:
+        await run_ingest_pipeline(source_id, kb_slug)
 
 
 @router.post("", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
