@@ -14,6 +14,9 @@ interface RssFeed {
   last_fetch_status: string | null;
   last_error: string | null;
   total_fetched: number;
+  filter_keywords: string[] | null;
+  filter_authors: string[] | null;
+  filter_categories: string[] | null;
 }
 
 interface RssEntry {
@@ -25,6 +28,24 @@ interface RssEntry {
   published_at: string | null;
   created_at: string;
 }
+
+interface FeedFormData {
+  name: string;
+  url: string;
+  filter_keywords: string;
+  filter_authors: string;
+  filter_categories: string;
+  poll_interval: number;
+}
+
+const EMPTY_FORM: FeedFormData = {
+  name: "",
+  url: "",
+  filter_keywords: "",
+  filter_authors: "",
+  filter_categories: "",
+  poll_interval: 60,
+};
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   success: { label: "成功", color: "bg-green-100 text-green-700" },
@@ -40,12 +61,21 @@ const ENTRY_STATUS: Record<string, { label: string; color: string }> = {
   failed: { label: "失败", color: "bg-red-100 text-red-700" },
 };
 
+function parseList(val: string[] | null | undefined): string {
+  return val?.join(", ") ?? "";
+}
+
+function buildList(val: string): string[] | null {
+  const items = val.split(",").map((s) => s.trim()).filter(Boolean);
+  return items.length > 0 ? items : null;
+}
+
 export default function RssManager() {
   const { kbSlug } = useParams();
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [name, setName] = useState("");
-  const [feedUrl, setFeedUrl] = useState("");
+  const [editingFeed, setEditingFeed] = useState<string | null>(null);
+  const [form, setForm] = useState<FeedFormData>(EMPTY_FORM);
   const [expandedFeed, setExpandedFeed] = useState<string | null>(null);
 
   const { data: feeds = [], isLoading } = useQuery<RssFeed[]>({
@@ -61,12 +91,36 @@ export default function RssManager() {
   });
 
   const addMutation = useMutation({
-    mutationFn: () => api.post(`/kb/${kbSlug}/rss`, { name, url: feedUrl }),
+    mutationFn: () =>
+      api.post(`/kb/${kbSlug}/rss`, {
+        name: form.name,
+        url: form.url,
+        filter_keywords: buildList(form.filter_keywords),
+        filter_authors: buildList(form.filter_authors),
+        filter_categories: buildList(form.filter_categories),
+        poll_interval: form.poll_interval,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rssFeeds", kbSlug] });
-      setName("");
-      setFeedUrl("");
+      setForm(EMPTY_FORM);
       setShowAdd(false);
+    },
+  });
+
+  const editMutation = useMutation({
+    mutationFn: () =>
+      api.put(`/kb/${kbSlug}/rss/${editingFeed}`, {
+        name: form.name,
+        url: form.url,
+        filter_keywords: buildList(form.filter_keywords),
+        filter_authors: buildList(form.filter_authors),
+        filter_categories: buildList(form.filter_categories),
+        poll_interval: form.poll_interval,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["rssFeeds", kbSlug] });
+      setEditingFeed(null);
+      setForm(EMPTY_FORM);
     },
   });
 
@@ -86,34 +140,54 @@ export default function RssManager() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["rssFeeds", kbSlug] }),
   });
 
+  function startEdit(feed: RssFeed) {
+    setEditingFeed(feed.id);
+    setForm({
+      name: feed.name,
+      url: feed.url,
+      filter_keywords: parseList(feed.filter_keywords),
+      filter_authors: parseList(feed.filter_authors),
+      filter_categories: parseList(feed.filter_categories),
+      poll_interval: feed.poll_interval,
+    });
+  }
+
+  const isFormOpen = showAdd || editingFeed !== null;
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">RSS 订阅管理</h1>
         <button
-          onClick={() => setShowAdd(!showAdd)}
+          onClick={() => {
+            setForm(EMPTY_FORM);
+            setEditingFeed(null);
+            setShowAdd(!showAdd);
+          }}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
         >
           添加订阅
         </button>
       </div>
 
-      {showAdd && (
+      {isFormOpen && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (name.trim() && feedUrl.trim()) addMutation.mutate();
+            if (!form.name.trim() || !form.url.trim()) return;
+            if (editingFeed) editMutation.mutate();
+            else addMutation.mutate();
           }}
           className="bg-white p-6 rounded-lg border border-gray-200 mb-6"
         >
-          <h2 className="text-lg font-semibold mb-4">添加 RSS 订阅源</h2>
+          <h2 className="text-lg font-semibold mb-4">{editingFeed ? "编辑订阅源" : "添加 RSS 订阅源"}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">名称</label>
               <input
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
                 placeholder="如：FreeBuf 安全资讯"
               />
@@ -122,24 +196,68 @@ export default function RssManager() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Feed URL</label>
               <input
                 type="url"
-                value={feedUrl}
-                onChange={(e) => setFeedUrl(e.target.value)}
+                value={form.url}
+                onChange={(e) => setForm({ ...form, url: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
                 placeholder="https://example.com/feed.xml"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">关键词过滤（逗号分隔）</label>
+              <input
+                type="text"
+                value={form.filter_keywords}
+                onChange={(e) => setForm({ ...form, filter_keywords: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="如：XSS, SQL注入（留空不过滤）"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">作者过滤（逗号分隔）</label>
+              <input
+                type="text"
+                value={form.filter_authors}
+                onChange={(e) => setForm({ ...form, filter_authors: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="如：Alice, Bob（留空不过滤）"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">分类过滤（逗号分隔）</label>
+              <input
+                type="text"
+                value={form.filter_categories}
+                onChange={(e) => setForm({ ...form, filter_categories: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="如：Security, Web（留空不过滤）"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">轮询间隔（分钟）</label>
+              <input
+                type="number"
+                min={5}
+                value={form.poll_interval}
+                onChange={(e) => setForm({ ...form, poll_interval: Number(e.target.value) || 60 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
               />
             </div>
           </div>
           <div className="mt-4 flex gap-3">
             <button
               type="submit"
-              disabled={addMutation.isPending}
+              disabled={addMutation.isPending || editMutation.isPending}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
-              添加
+              {editingFeed ? "保存" : "添加"}
             </button>
             <button
               type="button"
-              onClick={() => setShowAdd(false)}
+              onClick={() => {
+                setShowAdd(false);
+                setEditingFeed(null);
+                setForm(EMPTY_FORM);
+              }}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
             >
               取消
@@ -159,10 +277,15 @@ export default function RssManager() {
               label: "未抓取",
               color: "bg-gray-100 text-gray-500",
             };
+            const hasFilters =
+              (feed.filter_keywords && feed.filter_keywords.length > 0) ||
+              (feed.filter_authors && feed.filter_authors.length > 0) ||
+              (feed.filter_categories && feed.filter_categories.length > 0);
+
             return (
               <div key={feed.id} className="bg-white rounded-lg border border-gray-200">
                 <div className="p-4 flex items-center justify-between">
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
                       <h3 className="font-semibold text-gray-900">{feed.name}</h3>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${statusInfo.color}`}>
@@ -173,10 +296,16 @@ export default function RssManager() {
                           已暂停
                         </span>
                       )}
+                      {hasFilters && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                          过滤
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-gray-500 mt-1 truncate">{feed.url}</p>
-                    <div className="flex gap-4 mt-2 text-xs text-gray-400">
+                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-400">
                       <span>累计抓取: {feed.total_fetched}</span>
+                      <span>间隔: {feed.poll_interval}分钟</span>
                       {feed.last_fetched_at && (
                         <span>上次抓取: {new Date(feed.last_fetched_at).toLocaleString("zh-CN")}</span>
                       )}
@@ -184,8 +313,27 @@ export default function RssManager() {
                         <span className="text-red-500">错误: {feed.last_error.slice(0, 80)}</span>
                       )}
                     </div>
+                    {hasFilters && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {feed.filter_keywords?.map((kw) => (
+                          <span key={kw} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded">
+                            关键词: {kw}
+                          </span>
+                        ))}
+                        {feed.filter_authors?.map((a) => (
+                          <span key={a} className="text-xs px-2 py-0.5 bg-green-50 text-green-600 rounded">
+                            作者: {a}
+                          </span>
+                        ))}
+                        {feed.filter_categories?.map((c) => (
+                          <span key={c} className="text-xs px-2 py-0.5 bg-purple-50 text-purple-600 rounded">
+                            分类: {c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex gap-2 ml-4">
+                  <div className="flex gap-2 ml-4 shrink-0">
                     <button
                       onClick={() => fetchMutation.mutate(feed.id)}
                       disabled={fetchMutation.isPending}
@@ -202,6 +350,12 @@ export default function RssManager() {
                       }`}
                     >
                       {feed.is_active ? "暂停" : "启用"}
+                    </button>
+                    <button
+                      onClick={() => startEdit(feed)}
+                      className="px-3 py-1 text-sm bg-gray-50 text-gray-700 rounded-md hover:bg-gray-100"
+                    >
+                      编辑
                     </button>
                     <button
                       onClick={() => setExpandedFeed(expandedFeed === feed.id ? null : feed.id)}
