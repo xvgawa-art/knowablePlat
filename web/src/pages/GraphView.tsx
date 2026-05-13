@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { useParams, Link } from "react-router";
+import { useEffect, useRef, useCallback } from "react";
+import { useParams, Link, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
+import * as d3 from "d3";
 import { api } from "../api/client";
 import type { GraphData } from "../types";
 
-interface SimNode {
+interface SimNode extends d3.SimulationNodeDatum {
   id: string;
   slug: string;
   title: string;
   type: string;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
+}
+
+interface SimEdge extends d3.SimulationLinkDatum<SimNode> {
+  source: SimNode | string;
+  target: SimNode | string;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -24,206 +26,184 @@ const TYPE_COLORS: Record<string, string> = {
   tool_category: "#ec4899",
 };
 
+const TYPE_LABELS: Record<string, string> = {
+  source: "来源摘要",
+  entity: "实体",
+  concept: "概念",
+  comparison: "对比",
+  tool: "工具",
+  tool_category: "工具分类",
+};
+
 export default function GraphView() {
   const { kbSlug } = useParams();
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [hoveredNode, setHoveredNode] = useState<SimNode | null>(null);
-  const nodesRef = useRef<SimNode[]>([]);
-  const animRef = useRef<number>(0);
+  const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const simulationRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null);
 
-  const { data: graph, isLoading } = useQuery<GraphData>({
+  const { data: graph, isLoading, error } = useQuery<GraphData>({
     queryKey: ["wikiGraph", kbSlug],
     queryFn: () => api.get(`/kb/${kbSlug}/wiki/graph`),
     enabled: !!kbSlug,
   });
 
-  const simulate = useCallback(() => {
-    const nodes = nodesRef.current;
-    if (nodes.length === 0) return;
-
-    const centerX = 400;
-    const centerY = 300;
-    const repulsion = 2000;
-    const attraction = 0.01;
-    const damping = 0.9;
-
-    for (const node of nodes) {
-      node.vx += (centerX - node.x) * 0.001;
-      node.vy += (centerY - node.y) * 0.001;
-    }
-
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const ni = nodes[i]!;
-        const nj = nodes[j]!;
-        const dx = nj.x - ni.x;
-        const dy = nj.y - ni.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = repulsion / (dist * dist);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        ni.vx -= fx;
-        ni.vy -= fy;
-        nj.vx += fx;
-        nj.vy += fy;
-      }
-    }
-
-    if (graph) {
-      const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-      for (const edge of graph.edges) {
-        const src = nodeMap.get(edge.source);
-        const tgt = nodeMap.get(edge.target);
-        if (src && tgt) {
-          const dx = tgt.x - src.x;
-          const dy = tgt.y - src.y;
-          src.vx += dx * attraction;
-          src.vy += dy * attraction;
-          tgt.vx -= dx * attraction;
-          tgt.vy -= dy * attraction;
-        }
-      }
-    }
-
-    for (const node of nodes) {
-      node.vx *= damping;
-      node.vy *= damping;
-      node.x += node.vx;
-      node.y += node.vy;
-    }
-  }, [graph]);
+  const cleanup = useCallback(() => {
+    simulationRef.current?.stop();
+    simulationRef.current = null;
+  }, []);
 
   useEffect(() => {
-    if (!graph || graph.nodes.length === 0) return;
+    if (!graph || graph.nodes.length === 0 || !containerRef.current) return;
 
-    const simNodes: SimNode[] = graph.nodes.map((n, i) => {
-      const angle = (2 * Math.PI * i) / graph.nodes.length;
-      return {
-        ...n,
-        x: 400 + Math.cos(angle) * 150,
-        y: 300 + Math.sin(angle) * 150,
-        vx: 0,
-        vy: 0,
-      };
+    const container = containerRef.current;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    d3.select(container).select("svg").remove();
+    const svg = d3.select(container).append("svg");
+    svg.attr("width", width).attr("height", height);
+
+    const g = svg.append("g");
+
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.3, 4])
+      .on("zoom", (event) => {
+        g.attr("transform", event.transform);
+      });
+    svg.call(zoom);
+
+    const nodes: SimNode[] = graph.nodes.map((n) => ({ ...n }));
+    const edges: SimEdge[] = graph.edges.map((e) => ({ ...e }));
+
+    simulationRef.current = d3
+      .forceSimulation<SimNode>(nodes)
+      .force(
+        "link",
+        d3.forceLink<SimNode, SimEdge>(edges).id((d) => d.id).distance(100),
+      )
+      .force("charge", d3.forceManyBody().strength(-250))
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("collision", d3.forceCollide().radius(35));
+
+    g.append("g")
+      .selectAll("line")
+      .data(edges)
+      .join("line")
+      .attr("stroke", "#d1d5db")
+      .attr("stroke-width", 1.5)
+      .attr("stroke-opacity", 0.6);
+
+    const nodeGroup = g
+      .append("g")
+      .selectAll<SVGGElement, SimNode>(".node")
+      .data(nodes)
+      .join("g")
+      .attr("class", "node")
+      .attr("cursor", "pointer")
+      .call(
+        d3
+          .drag<SVGGElement, SimNode>()
+          .on("start", (event, d) => {
+            if (!event.active) simulationRef.current?.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x;
+            d.fy = event.y;
+          })
+          .on("end", (event, d) => {
+            if (!event.active) simulationRef.current?.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+          }),
+      );
+
+    nodeGroup
+      .append("circle")
+      .attr("r", 10)
+      .attr("fill", (d) => TYPE_COLORS[d.type] || "#6b7280")
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 2)
+      .attr("stroke-opacity", 0.8);
+
+    nodeGroup
+      .append("text")
+      .text((d) => (d.title.length > 14 ? d.title.slice(0, 14) + "…" : d.title))
+      .attr("dy", -16)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "11px")
+      .attr("fill", "#374151")
+      .attr("pointer-events", "none")
+      .attr("font-weight", 500);
+
+    nodeGroup.on("click", (_event, d) => {
+      navigate(`/kb/${kbSlug}/wiki/${d.slug}`);
     });
-    nodesRef.current = simNodes;
 
-    function tick() {
-      simulate();
-      const svg = svgRef.current;
-      if (!svg) return;
+    simulationRef.current.on("tick", () => {
+      g.selectAll<SVGLineElement, SimEdge>("line")
+        .attr("x1", (d) => (d.source as SimNode).x ?? 0)
+        .attr("y1", (d) => (d.source as SimNode).y ?? 0)
+        .attr("x2", (d) => (d.target as SimNode).x ?? 0)
+        .attr("y2", (d) => (d.target as SimNode).y ?? 0);
 
-      const nodeMap = new Map(simNodes.map((n) => [n.id, n]));
+      nodeGroup.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+    });
 
-      svg.querySelectorAll<SVGLineElement>(".graph-edge").forEach((line) => {
-        const src = nodeMap.get(line.dataset.source ?? "");
-        const tgt = nodeMap.get(line.dataset.target ?? "");
-        if (src && tgt) {
-          line.setAttribute("x1", String(src.x));
-          line.setAttribute("y1", String(src.y));
-          line.setAttribute("x2", String(tgt.x));
-          line.setAttribute("y2", String(tgt.y));
-        }
-      });
-
-      svg.querySelectorAll<SVGGElement>(".graph-node").forEach((g) => {
-        const node = nodeMap.get(g.dataset.id ?? "");
-        if (node) {
-          g.setAttribute("transform", `translate(${node.x},${node.y})`);
-        }
-      });
-
-      animRef.current = requestAnimationFrame(tick);
-    }
-
-    animRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animRef.current);
-  }, [graph, simulate]);
+    return () => {
+      cleanup();
+      svg.remove();
+    };
+  }, [graph, kbSlug, navigate, cleanup]);
 
   if (isLoading) return <div className="p-8 text-gray-500">加载图谱数据...</div>;
+  if (error) return <div className="p-8 text-red-600">加载失败</div>;
 
-  if (!graph || graph.nodes.length === 0) {
-    return (
-      <div className="p-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">知识图谱</h1>
-        <p className="text-gray-400 text-center py-12">暂无 Wiki 页面，无法生成图谱</p>
-      </div>
-    );
-  }
-
-  const nodeMap = new Map(nodesRef.current.map((n) => [n.id, n]));
+  const activeTypes = graph
+    ? [...new Set(graph.nodes.map((n) => n.type))]
+    : [];
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">知识图谱</h1>
-        <Link to={`/kb/${kbSlug}/wiki`} className="text-sm text-blue-600 hover:text-blue-800">
-          返回 Wiki 列表
-        </Link>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <svg ref={svgRef} width="100%" viewBox="0 0 800 600" className="block">
-          {graph.edges.map((edge, i) => (
-            <line
-              key={i}
-              className="graph-edge"
-              data-source={edge.source}
-              data-target={edge.target}
-              stroke="#d1d5db"
-              strokeWidth={1}
-            />
+    <div className="p-8 h-[calc(100vh-4rem)] flex flex-col">
+      <div className="flex items-center justify-between mb-4 shrink-0">
+        <div className="flex items-center gap-4">
+          <Link to={`/kb/${kbSlug}/wiki`} className="text-sm text-blue-600 hover:text-blue-800">
+            ← 返回 Wiki
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-900">知识图谱</h1>
+          {graph && (
+            <span className="text-sm text-gray-500">
+              {graph.nodes.length} 个节点 · {graph.edges.length} 条连线
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-4">
+          {activeTypes.map((type) => (
+            <div key={type} className="flex items-center gap-1.5">
+              <span
+                className="inline-block w-3 h-3 rounded-full"
+                style={{ backgroundColor: TYPE_COLORS[type] || "#6b7280" }}
+              />
+              <span className="text-xs text-gray-600">{TYPE_LABELS[type] || type}</span>
+            </div>
           ))}
-
-          {graph.nodes.map((node) => {
-            const simNode = nodeMap.get(node.id);
-            const color = TYPE_COLORS[node.type] ?? "#6b7280";
-            return (
-              <g
-                key={node.id}
-                className="graph-node cursor-pointer"
-                data-id={node.id}
-                transform={`translate(${simNode?.x ?? 400},${simNode?.y ?? 300})`}
-                onMouseEnter={() => simNode && setHoveredNode(simNode)}
-                onMouseLeave={() => setHoveredNode(null)}
-              >
-                <a href={`/kb/${kbSlug}/wiki/${node.slug}`}>
-                  <circle r={8} fill={color} stroke="white" strokeWidth={2} />
-                  <text
-                    textAnchor="middle"
-                    y={-14}
-                    className="text-[10px] fill-gray-700 pointer-events-none"
-                  >
-                    {node.title.length > 12 ? node.title.slice(0, 12) + "…" : node.title}
-                  </text>
-                </a>
-              </g>
-            );
-          })}
-        </svg>
-
-        {hoveredNode && (
-          <div className="absolute bottom-4 left-4 bg-white border border-gray-200 rounded-lg p-3 shadow-lg">
-            <p className="font-medium text-gray-900">{hoveredNode.title}</p>
-            <p className="text-xs text-gray-500">{hoveredNode.type}</p>
-            <Link
-              to={`/kb/${kbSlug}/wiki/${hoveredNode.slug}`}
-              className="text-xs text-blue-600 hover:text-blue-800"
-            >
-              查看页面
-            </Link>
-          </div>
-        )}
+        </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-3">
-        {Object.entries(TYPE_COLORS).map(([type, color]) => (
-          <div key={type} className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-            <span className="text-xs text-gray-600">{type}</span>
-          </div>
-        ))}
-      </div>
+      {graph && graph.nodes.length === 0 ? (
+        <div className="text-center py-20 text-gray-400">
+          <p className="text-lg">暂无 Wiki 页面</p>
+          <p className="text-sm mt-2">提交来源后，Wiki 页面将自动生成并出现在图谱中</p>
+        </div>
+      ) : (
+        <div
+          ref={containerRef}
+          className="flex-1 border border-gray-200 rounded-lg bg-white overflow-hidden"
+        >
+          <svg className="w-full h-full" />
+        </div>
+      )}
     </div>
   );
 }

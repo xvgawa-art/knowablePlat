@@ -98,11 +98,19 @@ export default function MarkdownRenderer({ content, kbSlug }: MarkdownRendererPr
   );
 }
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^\w一-鿿-]/g, "");
+}
+
 function transformWikilinks(content: string, kbSlug?: string): string {
-  return content.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, slug, label) => {
-    const displayText = label || slug;
+  return content.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, target, label) => {
+    const displayText = label || target;
     if (kbSlug) {
-      return `[${displayText}](/kb/${kbSlug}/wiki/${slug})`;
+      const slug = slugify(target);
+      return `[${displayText}](/kb/${kbSlug}/wiki/${encodeURIComponent(slug)})`;
     }
     return `**${displayText}**`;
   });

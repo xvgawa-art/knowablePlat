@@ -243,13 +243,13 @@ export default function RssManager() {
               />
             </div>
           </div>
-          <div className="mt-4 flex gap-3">
+          <div className="mt-4 flex items-center gap-3">
             <button
               type="submit"
               disabled={addMutation.isPending || editMutation.isPending}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
-              {editingFeed ? "保存" : "添加"}
+              {(addMutation.isPending || editMutation.isPending) ? "处理中..." : editingFeed ? "保存" : "添加"}
             </button>
             <button
               type="button"
@@ -262,6 +262,13 @@ export default function RssManager() {
             >
               取消
             </button>
+            {(addMutation.isError || editMutation.isError) && (
+              <p className="text-sm text-red-600">
+                {((addMutation.error || editMutation.error) instanceof Error
+                  ? (addMutation.error || editMutation.error)?.message
+                  : "操作失败")}
+              </p>
+            )}
           </div>
         </form>
       )}
