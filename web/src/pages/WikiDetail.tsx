@@ -63,7 +63,7 @@ export default function WikiDetail() {
             onChange={(e) => setEditContent(e.target.value)}
             className="w-full h-[600px] p-4 text-sm font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
           />
-          <div className="flex gap-3 mt-4">
+          <div className="flex items-center gap-3 mt-4">
             <button
               onClick={() => updateMutation.mutate(editContent)}
               disabled={updateMutation.isPending}
@@ -77,6 +77,11 @@ export default function WikiDetail() {
             >
               取消
             </button>
+            {updateMutation.isError && (
+              <span className="text-sm text-red-600">
+                {updateMutation.error instanceof Error ? updateMutation.error.message : "保存失败"}
+              </span>
+            )}
           </div>
         </div>
       ) : (

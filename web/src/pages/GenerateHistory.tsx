@@ -2,6 +2,7 @@ import { useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api } from "../api/client";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 import type { GeneratedDoc } from "../types";
 
 export default function GenerateHistory() {
@@ -49,9 +50,9 @@ export default function GenerateHistory() {
         </div>
 
         {selectedDoc.content ? (
-          <pre className="whitespace-pre-wrap text-sm bg-gray-50 p-6 rounded-lg border border-gray-200 leading-relaxed">
-            {selectedDoc.content}
-          </pre>
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <MarkdownRenderer content={selectedDoc.content} />
+          </div>
         ) : (
           <div className="text-center py-12 text-gray-400">
             <p className="text-2xl mb-2">📝</p>
