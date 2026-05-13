@@ -37,6 +37,18 @@ export default function Sources() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (sourceId: string) => api.del(`/kb/${kbSlug}/sources/${sourceId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sources", kbSlug] }),
+  });
+
+  function handleDelete(e: React.MouseEvent, sourceId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("确定删除此来源？关联的 wiki 页面也会被删除。")) return;
+    deleteMutation.mutate(sourceId);
+  }
+
   const handleRetry = (e: React.MouseEvent, sourceId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -87,6 +99,12 @@ export default function Sources() {
                     <span className={`text-xs px-2 py-1 rounded-full ${statusInfo.color}`}>
                       {statusInfo.label}
                     </span>
+                    <button
+                      onClick={(e) => handleDelete(e, source.id)}
+                      className="text-xs px-2 py-1 rounded text-red-600 hover:bg-red-50"
+                    >
+                      删除
+                    </button>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
