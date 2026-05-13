@@ -291,15 +291,20 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     details={"title": title, "source_url": source.url},
                 )
 
-                # Step 8: Create notification
-                key_points = extracted.get("key_points", [])
+                # Step 8: Create notification with LLM-generated summary and related points
+                from app.services.notification import generate_ingest_notification
+
+                wiki_page_list = [{"title": p.title, "slug": p.slug} for p in existing_pages if p.slug != source_slug][
+                    :20
+                ]
+                notif_content = await generate_ingest_notification(title, extracted.get("summary", ""), wiki_page_list)
                 await notif_repo.create(
                     kb_id=kb.id,
                     source_id=source.id,
                     trigger_type=TriggerType.manual,
-                    title=f"新来源已摄入：{title}",
-                    summary=extracted.get("summary", "")[:500],
-                    related_points=key_points[:5] if key_points else None,
+                    title=f"新知识入库：{title}",
+                    summary=notif_content["summary"],
+                    related_points=notif_content["related_points"],
                 )
 
                 # Mark source as completed

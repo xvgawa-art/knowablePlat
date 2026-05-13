@@ -254,14 +254,21 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     details={"title": tool_name, "category": category_name, "source_url": source.url},
                 )
 
-                # Step 9: Create notification
+                # Step 9: Create notification with LLM summary
+                from app.services.notification import generate_ingest_notification
+
+                tool_page_list = [{"title": p.title, "slug": p.slug} for p in existing_tools][:20]
+                tool_page_list.append({"title": f"{category_name}工具", "slug": category_slug})
+                notif_content = await generate_ingest_notification(
+                    tool_name, tool_info.get("description", ""), tool_page_list
+                )
                 await notif_repo.create(
                     kb_id=kb.id,
                     source_id=source.id,
                     trigger_type=TriggerType.manual,
                     title=f"新工具入库：{tool_name}",
-                    summary=f"工具「{tool_name}」已归入「{category_name}」分类。",
-                    related_points=[{"category": category_name, "category_slug": category_slug}],
+                    summary=notif_content["summary"],
+                    related_points=notif_content["related_points"],
                 )
 
                 source.status = SourceStatus.completed
