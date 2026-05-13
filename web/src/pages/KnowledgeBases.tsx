@@ -101,7 +101,13 @@ export default function KnowledgeBases() {
                 onClick={() => {
                   if (confirm(`确定删除知识库「${kb.name}」？`)) deleteMutation.mutate(kb.slug);
                 }}
-                className="px-3 py-1 text-sm bg-red-50 text-red-700 rounded-md hover:bg-red-100"
+                disabled={kb.is_system}
+                className={`px-3 py-1 text-sm rounded-md ${
+                  kb.is_system
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : "bg-red-50 text-red-700 hover:bg-red-100"
+                }`}
+                title={kb.is_system ? "系统内置知识库，不可删除" : "删除"}
               >
                 删除
               </button>

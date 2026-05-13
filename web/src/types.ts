@@ -5,6 +5,7 @@ export interface KnowledgeBase {
   description: string | null;
   icon: string | null;
   color: string | null;
+  is_system: boolean;
   source_count: number;
   wiki_page_count: number;
   created_at: string;
