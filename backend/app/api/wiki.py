@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -73,14 +74,18 @@ async def get_activity_log(kb_slug: str, offset: int = 0, limit: int = 50, db: A
     return await log_repo.list_by_kb(kb.id, offset=offset, limit=limit)
 
 
-@router.get("/{slug}", response_model=WikiPageResponse)
-async def get_wiki_page(kb_slug: str, slug: str, db: AsyncSession = Depends(get_db)):
+@router.get("/export")
+async def export_wiki(kb_slug: str, db: AsyncSession = Depends(get_db)):
     kb = await _get_kb(kb_slug, db)
-    wiki_repo = WikiPageRepository(db)
-    page = await wiki_repo.get_by_slug(kb.id, slug)
-    if page is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wiki 页面不存在")
-    return page
+
+    from app.services.export import export_kb_as_zip
+
+    zip_bytes = await export_kb_as_zip(str(kb.id), db)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{kb_slug}-wiki.zip"'},
+    )
 
 
 @router.post("/query", response_model=WikiQueryResponse)
@@ -109,12 +114,22 @@ async def semantic_search(kb_slug: str, data: SemanticSearchRequest, db: AsyncSe
 
 
 @router.post("/lint")
-async def lint_wiki(kb_slug: str, db: AsyncSession = Depends(get_db)):
+async def lint_wiki_endpoint(kb_slug: str, db: AsyncSession = Depends(get_db)):
     kb = await _get_kb(kb_slug, db)
 
     from app.services.wiki_engine import lint_wiki
 
     return await lint_wiki(str(kb.id), kb_slug, db)
+
+
+@router.get("/{slug}", response_model=WikiPageResponse)
+async def get_wiki_page(kb_slug: str, slug: str, db: AsyncSession = Depends(get_db)):
+    kb = await _get_kb(kb_slug, db)
+    wiki_repo = WikiPageRepository(db)
+    page = await wiki_repo.get_by_slug(kb.id, slug)
+    if page is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wiki 页面不存在")
+    return page
 
 
 @router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
