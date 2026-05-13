@@ -379,4 +379,3 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
 
                 source.status = SourceStatus.failed
                 logger.error("ingest_failed", source_id=str(source_id), error=str(e))
-                raise
