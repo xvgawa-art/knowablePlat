@@ -101,7 +101,7 @@ export default function Dashboard() {
                     {notificationsData.items.map((n) => (
                       <Link
                         key={n.id}
-                        to="/notifications"
+                        to={`/notifications/${n.id}`}
                         className={`block p-4 bg-white rounded-lg border border-gray-200 hover:shadow-md ${
                           !n.is_read ? "border-l-4 border-l-blue-500" : ""
                         }`}
