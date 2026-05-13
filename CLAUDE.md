@@ -4,7 +4,7 @@
 
 一个全栈知识管理平台，灵感来自 Karpathy 的 LLM-Wiki 模式。用户提交在线文章链接，系统抓取并存储，然后使用 LLM 增量构建和维护一个结构化、互相链接的 wiki。通过网页端进行浏览和查询。
 
-**核心理念：** 不同于 RAG（每次查询都从原始文档检索），LLM 增量构建并维护一个**持久的 wiki** —— 一个结构化、互相链接的 Markdown 文件集合。知识只编译一次并持续更新，而非每次查询重新推导。每添加一个新来源、每提一个问题，wiki 都会变得更丰富。
+**核心理念：** 不同于 RAG（每次查询都从原始文档检索），LLM 增量构建并维护一个**持久的 wiki** —— 一个结构化、互相链接的 Markdown 文件集合。知识只编译一次并持续更新，而非每次查询重新推导。每添加一个新来源，wiki 都会变得更丰富。
 
 **关键差异：wiki 是一个持久的、可复利的产物。** 交叉引用已经建立，矛盾已经标记，综合分析已反映所有已读内容。人类负责策展来源、引导分析、提出好问题。LLM 负责其余所有工作——摘要、交叉引用、归档、簿记。
 
@@ -341,7 +341,7 @@ tags: [标签1, 标签2]
 |------|------|------|
 | id | UUID, PK | 主键 |
 | kb_id | UUID, FK | 所属知识库 |
-| url | string | 来源 URL（同一知识库内唯一） |
+| url | string | 来源 URL（联合唯一：`(kb_id, url)`） |
 | title | string | 文章标题 |
 | raw_content | text | 原始抓取的 Markdown |
 | status | enum | pending / processing / completed / failed |
@@ -374,20 +374,21 @@ tags: [标签1, 标签2]
 | id | UUID, PK | 主键 |
 | feed_id | UUID, FK | 所属订阅源 |
 | kb_id | UUID, FK | 所属知识库 |
-| guid | string | RSS 条目唯一标识（用于去重） |
+| guid | string | RSS 条目唯一标识（联合唯一：`(feed_id, guid)`，用于去重） |
 | url | string | 文章原文 URL |
 | title | string | 文章标题 |
 | published_at | datetime | 文章发布时间 |
 | source_id | UUID, FK, nullable | 关联的来源文档（Ingest 完成后填充） |
 | status | enum | new / ingesting / completed / filtered / failed |
 | fetched_at | datetime | 抓取时间 |
+| created_at | datetime | 记录创建时间 |
 
 ### wiki_pages（Wiki 页面表）
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID, PK | 主键 |
 | kb_id | UUID, FK | 所属知识库 |
-| slug | string | URL 友好标识符（同一知识库内唯一） |
+| slug | string | URL 友好标识符（联合唯一：`(kb_id, slug)`） |
 | title | string | 页面标题 |
 | type | enum | source / entity / concept / comparison |
 | content | text | Markdown 内容 |
@@ -402,7 +403,7 @@ tags: [标签1, 标签2]
 |------|------|------|
 | id | UUID, PK | 主键 |
 | kb_id | UUID, FK | 所属知识库 |
-| name | string | 实体名称（同一知识库内唯一） |
+| name | string | 实体名称（联合唯一：`(kb_id, name)`） |
 | type | enum | person / organization / tool / topic / event |
 | aliases | string[] | 别名列表 |
 | wiki_page_id | UUID, FK | 关联 wiki 页面 |
