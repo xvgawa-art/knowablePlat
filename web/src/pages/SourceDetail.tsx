@@ -2,7 +2,7 @@ import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
-import type { SourceDetail as SourceDetailType } from "../types";
+import type { SourceDetail as SourceDetailType, WikiPageListItem } from "../types";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending: { label: "待处理", color: "bg-yellow-100 text-yellow-800" },
@@ -35,6 +35,12 @@ export default function SourceDetail() {
       setRetrying(false);
       queryClient.invalidateQueries({ queryKey: ["source", kbSlug, sourceId] });
     },
+  });
+
+  const { data: wikiPages = [] } = useQuery<WikiPageListItem[]>({
+    queryKey: ["wikiBySource", kbSlug, sourceId],
+    queryFn: () => api.get(`/kb/${kbSlug}/wiki`, { source_id: sourceId! }),
+    enabled: !!kbSlug && !!sourceId,
   });
 
   if (isLoading) return <div className="p-8 text-gray-500">加载中...</div>;
@@ -80,11 +86,31 @@ export default function SourceDetail() {
       </div>
 
       {source.raw_content && (
-        <div>
+        <div className="mb-8">
           <h2 className="text-lg font-semibold mb-2">原始内容</h2>
           <pre className="whitespace-pre-wrap text-sm bg-gray-50 p-6 rounded-lg border border-gray-200 max-h-[600px] overflow-y-auto">
             {source.raw_content}
           </pre>
+        </div>
+      )}
+
+      {wikiPages.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3">生成的 Wiki 页面</h2>
+          <div className="space-y-2">
+            {wikiPages.map((page) => (
+              <Link
+                key={page.id}
+                to={`/kb/${kbSlug}/wiki/${page.slug}`}
+                className="block p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-900">{page.title}</span>
+                  <span className="text-xs text-gray-400">{page.page_type}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
     </div>

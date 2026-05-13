@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,12 +37,15 @@ async def list_wiki_pages(
     kb_slug: str,
     page_type: str | None = None,
     search: str | None = None,
+    source_id: uuid.UUID | None = None,
     offset: int = 0,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
     kb = await _get_kb(kb_slug, db)
     wiki_repo = WikiPageRepository(db)
+    if source_id:
+        return await wiki_repo.list_by_source(kb.id, source_id)
     if search and search.strip():
         return await wiki_repo.search(kb.id, search.strip(), offset=offset, limit=limit)
     ptype = WikiPageType(page_type) if page_type else None
