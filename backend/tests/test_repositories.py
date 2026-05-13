@@ -2,10 +2,18 @@ import uuid
 
 import pytest
 
+from app.models.entity import Entity, EntityType
 from app.models.knowledge_base import KbType, KnowledgeBase
+from app.models.notification import Notification, TriggerType
+from app.models.rss_entry import EntryStatus, RssEntry
+from app.models.rss_feed import FeedType, RssFeed
 from app.models.source import SourceStatus
 from app.models.wiki_page import WikiPageType
+from app.repositories.entity import EntityRepository
 from app.repositories.knowledge_base import KnowledgeBaseRepository
+from app.repositories.notification import NotificationRepository
+from app.repositories.rss_entry import RssEntryRepository
+from app.repositories.rss_feed import RssFeedRepository
 from app.repositories.source import SourceRepository
 from app.repositories.wiki_page import WikiPageRepository
 
@@ -23,6 +31,26 @@ async def source_repo(db_session):
 @pytest.fixture
 async def wiki_repo(db_session):
     return WikiPageRepository(db_session)
+
+
+@pytest.fixture
+async def entity_repo(db_session):
+    return EntityRepository(db_session)
+
+
+@pytest.fixture
+async def notification_repo(db_session):
+    return NotificationRepository(db_session)
+
+
+@pytest.fixture
+async def rss_feed_repo(db_session):
+    return RssFeedRepository(db_session)
+
+
+@pytest.fixture
+async def rss_entry_repo(db_session):
+    return RssEntryRepository(db_session)
 
 
 @pytest.fixture
@@ -71,6 +99,43 @@ async def test_kb_list_all_returns_records(kb_repo):
     kbs = await kb_repo.list_all()
     assert isinstance(kbs, list)
     assert len(kbs) > 0
+
+
+async def test_kb_list_by_user(kb_repo, db_session, user):
+    kb = KnowledgeBase(
+        id=uuid.uuid4(),
+        name=f"user-kb-{uuid.uuid4().hex[:8]}",
+        slug=f"user-kb-{uuid.uuid4().hex[:8]}",
+        user_id=user.id,
+    )
+    db_session.add(kb)
+    await db_session.commit()
+
+    result = await kb_repo.list_by_user(user.id)
+    assert isinstance(result, list)
+    assert any(k.is_system for k in result)
+
+
+async def test_kb_refresh_counts(kb_repo, source_repo, wiki_repo, test_kb, db_session):
+    await source_repo.create(
+        id=uuid.uuid4(), kb_id=str(test_kb.id),
+        url=f"https://example.com/refresh-{uuid.uuid4().hex[:6]}",
+        title="S1", status=SourceStatus.pending,
+    )
+    await wiki_repo.create(
+        id=uuid.uuid4(), kb_id=str(test_kb.id),
+        slug=f"refresh-wiki-{uuid.uuid4().hex[:6]}", title="W1",
+        page_type=WikiPageType.concept, content="c",
+    )
+    await db_session.commit()
+
+    await kb_repo.refresh_counts(str(test_kb.id))
+    await db_session.commit()
+
+    kb = await kb_repo.get_by_id(str(test_kb.id))
+    assert kb is not None
+    assert kb.source_count >= 1
+    assert kb.wiki_page_count >= 1
 
 
 # ── SourceRepository ──
@@ -208,6 +273,231 @@ async def test_wiki_update(wiki_repo, test_kb, db_session):
     found = await wiki_repo.get_by_id(page.id)
     assert found is not None
     assert found.title == "Updated Title"
+
+
+# ── EntityRepository ──
+
+
+async def test_entity_get_by_name(entity_repo, test_kb, db_session):
+    entity = Entity(
+        id=uuid.uuid4(), kb_id=str(test_kb.id),
+        name=f"test-entity-{uuid.uuid4().hex[:6]}", entity_type=EntityType.person,
+    )
+    db_session.add(entity)
+    await db_session.commit()
+
+    found = await entity_repo.get_by_name(test_kb.id, entity.name)
+    assert found is not None
+    assert found.entity_type == EntityType.person
+
+
+async def test_entity_get_by_name_not_found(entity_repo, test_kb):
+    found = await entity_repo.get_by_name(test_kb.id, "nonexistent-entity")
+    assert found is None
+
+
+async def test_entity_list_by_kb(entity_repo, test_kb, db_session):
+    for i in range(3):
+        db_session.add(Entity(
+            id=uuid.uuid4(), kb_id=str(test_kb.id),
+            name=f"list-entity-{uuid.uuid4().hex[:6]}-{i}", entity_type=EntityType.topic,
+        ))
+    await db_session.commit()
+
+    entities = await entity_repo.list_by_kb(test_kb.id)
+    assert len(entities) >= 3
+
+
+# ── NotificationRepository ──
+
+
+async def _create_source_for_notification(source_repo, test_kb, db_session):
+    source = await source_repo.create(
+        id=uuid.uuid4(), kb_id=str(test_kb.id),
+        url=f"https://example.com/notif-{uuid.uuid4().hex[:6]}",
+        title="Notif Source", status=SourceStatus.completed,
+    )
+    await db_session.commit()
+    return source
+
+
+async def test_notification_list_by_kb(notification_repo, source_repo, test_kb, db_session):
+    source = await _create_source_for_notification(source_repo, test_kb, db_session)
+    db_session.add(Notification(
+        id=uuid.uuid4(), kb_id=str(test_kb.id), source_id=str(source.id),
+        trigger_type=TriggerType.manual, title="Test Notif",
+    ))
+    await db_session.commit()
+
+    notifs = await notification_repo.list_by_kb(test_kb.id)
+    assert len(notifs) >= 1
+
+
+async def test_notification_list_by_kb_unread_only(notification_repo, source_repo, test_kb, db_session):
+    source = await _create_source_for_notification(source_repo, test_kb, db_session)
+    db_session.add(Notification(
+        id=uuid.uuid4(), kb_id=str(test_kb.id), source_id=str(source.id),
+        trigger_type=TriggerType.rss, title="Unread Notif", is_read=False,
+    ))
+    db_session.add(Notification(
+        id=uuid.uuid4(), kb_id=str(test_kb.id), source_id=str(source.id),
+        trigger_type=TriggerType.rss, title="Read Notif", is_read=True,
+    ))
+    await db_session.commit()
+
+    unread = await notification_repo.list_by_kb(test_kb.id, unread_only=True)
+    assert all(n.is_read is False for n in unread)
+
+
+async def test_notification_mark_read(notification_repo, source_repo, test_kb, db_session):
+    source = await _create_source_for_notification(source_repo, test_kb, db_session)
+    notif = Notification(
+        id=uuid.uuid4(), kb_id=str(test_kb.id), source_id=str(source.id),
+        trigger_type=TriggerType.manual, title="Mark Read Test", is_read=False,
+    )
+    db_session.add(notif)
+    await db_session.commit()
+
+    await notification_repo.mark_read(notif.id)
+    await db_session.commit()
+
+    found = await notification_repo.get_by_id(notif.id)
+    assert found is not None
+    assert found.is_read is True
+
+
+async def test_notification_count_unread(notification_repo, source_repo, test_kb, db_session):
+    source = await _create_source_for_notification(source_repo, test_kb, db_session)
+    db_session.add(Notification(
+        id=uuid.uuid4(), kb_id=str(test_kb.id), source_id=str(source.id),
+        trigger_type=TriggerType.manual, title="Unread 1", is_read=False,
+    ))
+    await db_session.commit()
+
+    count = await notification_repo.count_unread(test_kb.id)
+    assert count >= 1
+
+
+async def test_notification_count_unread_global(notification_repo, source_repo, test_kb, db_session):
+    source = await _create_source_for_notification(source_repo, test_kb, db_session)
+    db_session.add(Notification(
+        id=uuid.uuid4(), kb_id=str(test_kb.id), source_id=str(source.id),
+        trigger_type=TriggerType.manual, title="Global Unread", is_read=False,
+    ))
+    await db_session.commit()
+
+    count = await notification_repo.count_unread()
+    assert count >= 1
+
+
+async def test_notification_mark_all_read(notification_repo, source_repo, test_kb, db_session):
+    source = await _create_source_for_notification(source_repo, test_kb, db_session)
+    for i in range(3):
+        db_session.add(Notification(
+            id=uuid.uuid4(), kb_id=str(test_kb.id), source_id=str(source.id),
+            trigger_type=TriggerType.manual, title=f"Bulk {i}", is_read=False,
+        ))
+    await db_session.commit()
+
+    await notification_repo.mark_all_read(test_kb.id)
+    await db_session.commit()
+
+    unread = await notification_repo.list_by_kb(test_kb.id, unread_only=True)
+    assert len(unread) == 0
+
+
+async def test_notification_list_all(notification_repo, source_repo, test_kb, db_session):
+    source = await _create_source_for_notification(source_repo, test_kb, db_session)
+    db_session.add(Notification(
+        id=uuid.uuid4(), kb_id=str(test_kb.id), source_id=str(source.id),
+        trigger_type=TriggerType.manual, title="List All Test",
+    ))
+    await db_session.commit()
+
+    all_notifs = await notification_repo.list_all()
+    assert isinstance(all_notifs, list)
+    assert len(all_notifs) >= 1
+
+
+# ── RssFeedRepository ──
+
+
+async def test_rss_feed_list_by_kb(rss_feed_repo, test_kb, db_session):
+    feed = RssFeed(
+        id=uuid.uuid4(), kb_id=str(test_kb.id),
+        name=f"test-feed-{uuid.uuid4().hex[:6]}",
+        url="https://example.com/feed.xml", feed_type=FeedType.rss,
+    )
+    db_session.add(feed)
+    await db_session.commit()
+
+    feeds = await rss_feed_repo.list_by_kb(test_kb.id)
+    assert len(feeds) >= 1
+
+
+async def test_rss_feed_list_active(rss_feed_repo, test_kb, db_session):
+    feed = RssFeed(
+        id=uuid.uuid4(), kb_id=str(test_kb.id),
+        name=f"active-feed-{uuid.uuid4().hex[:6]}",
+        url="https://example.com/active-feed.xml", feed_type=FeedType.rss,
+        is_active=True,
+    )
+    db_session.add(feed)
+    await db_session.commit()
+
+    active = await rss_feed_repo.list_active()
+    assert any(f.name == feed.name for f in active)
+
+
+# ── RssEntryRepository ──
+
+
+async def _create_feed_for_entry(rss_feed_repo, test_kb, db_session):
+    feed = RssFeed(
+        id=uuid.uuid4(), kb_id=str(test_kb.id),
+        name=f"entry-feed-{uuid.uuid4().hex[:6]}",
+        url="https://example.com/entry-feed.xml", feed_type=FeedType.rss,
+    )
+    db_session.add(feed)
+    await db_session.commit()
+    return feed
+
+
+async def test_rss_entry_get_by_guid(rss_entry_repo, test_kb, db_session):
+    feed = await _create_feed_for_entry(rss_entry_repo, test_kb, db_session)
+    entry = RssEntry(
+        id=uuid.uuid4(), feed_id=str(feed.id), kb_id=str(test_kb.id),
+        guid=f"guid-{uuid.uuid4().hex[:8]}",
+        url="https://example.com/article-1", title="Article 1",
+        status=EntryStatus.new,
+    )
+    db_session.add(entry)
+    await db_session.commit()
+
+    found = await rss_entry_repo.get_by_guid(feed.id, entry.guid)
+    assert found is not None
+    assert found.title == "Article 1"
+
+
+async def test_rss_entry_get_by_guid_not_found(rss_entry_repo, test_kb, db_session):
+    feed = await _create_feed_for_entry(rss_entry_repo, test_kb, db_session)
+    found = await rss_entry_repo.get_by_guid(feed.id, "nonexistent-guid")
+    assert found is None
+
+
+async def test_rss_entry_list_by_feed(rss_entry_repo, test_kb, db_session):
+    feed = await _create_feed_for_entry(rss_entry_repo, test_kb, db_session)
+    for i in range(3):
+        db_session.add(RssEntry(
+            id=uuid.uuid4(), feed_id=str(feed.id), kb_id=str(test_kb.id),
+            guid=f"list-guid-{uuid.uuid4().hex[:8]}-{i}",
+            url=f"https://example.com/list-article-{i}", title=f"List Article {i}",
+            status=EntryStatus.new,
+        ))
+    await db_session.commit()
+
+    entries = await rss_entry_repo.list_by_feed(feed.id)
+    assert len(entries) >= 3
 
 
 # ── BaseRepository delete ──

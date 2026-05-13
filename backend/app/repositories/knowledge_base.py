@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +33,7 @@ class KnowledgeBaseRepository(BaseRepository):
             is_system=True,
         )
 
-    async def list_by_user(self, user_id: str, offset: int = 0, limit: int = 50) -> list[KnowledgeBase]:
+    async def list_by_user(self, user_id: str | uuid.UUID, offset: int = 0, limit: int = 50) -> list[KnowledgeBase]:
         from sqlalchemy import or_
 
         result = await self.session.execute(
