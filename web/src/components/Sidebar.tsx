@@ -35,6 +35,7 @@ export default function Sidebar() {
         { to: `/kb/${kbSlug}`, label: "概览", icon: "📊" },
         { to: `/kb/${kbSlug}/wiki`, label: "Wiki", icon: "📖" },
         { to: `/kb/${kbSlug}/sources`, label: "来源", icon: "📄" },
+        { to: `/kb/${kbSlug}/rss`, label: "RSS", icon: "📡" },
       ]
     : [];
 

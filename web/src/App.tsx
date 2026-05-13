@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import KnowledgeBases from "./pages/KnowledgeBases";
 import KbDetail from "./pages/KbDetail";
 import Notifications from "./pages/Notifications";
+import RssManager from "./pages/RssManager";
 import SourceDetail from "./pages/SourceDetail";
 import Sources from "./pages/Sources";
 import SubmitSource from "./pages/SubmitSource";
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="kb/:kbSlug/sources" element={<Sources />} />
         <Route path="kb/:kbSlug/sources/submit" element={<SubmitSource />} />
         <Route path="kb/:kbSlug/sources/:sourceId" element={<SourceDetail />} />
+        <Route path="kb/:kbSlug/rss" element={<RssManager />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="tools" element={<ToolArsenal />} />
       </Route>
