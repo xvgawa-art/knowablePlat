@@ -143,3 +143,13 @@ async def test_retry_non_failed_source(client: AsyncClient, kb_slug: str) -> Non
 async def test_retry_not_found(client: AsyncClient, kb_slug: str) -> None:
     resp = await client.post(f"/api/kb/{kb_slug}/sources/{uuid.uuid4()}/retry")
     assert resp.status_code == 404
+
+
+async def test_delete_source_not_found(client: AsyncClient, kb_slug: str) -> None:
+    resp = await client.delete(f"/api/kb/{kb_slug}/sources/{uuid.uuid4()}")
+    assert resp.status_code == 404
+
+
+async def test_batch_create_empty_urls(client: AsyncClient, kb_slug: str) -> None:
+    resp = await client.post(f"/api/kb/{kb_slug}/sources/batch", json={"urls": []})
+    assert resp.status_code == 422
