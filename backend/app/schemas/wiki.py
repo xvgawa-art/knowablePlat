@@ -46,6 +46,11 @@ class WikiQueryResponse(BaseModel):
     referenced_pages: list[str]
 
 
+class SemanticSearchRequest(BaseModel):
+    query: str
+    limit: int = 10
+
+
 class ActivityLogResponse(BaseModel):
     id: uuid.UUID
     kb_id: uuid.UUID

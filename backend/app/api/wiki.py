@@ -9,6 +9,7 @@ from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.wiki_page import WikiPageRepository
 from app.schemas.wiki import (
     ActivityLogResponse,
+    SemanticSearchRequest,
     WikiGraphData,
     WikiPageListItem,
     WikiPageResponse,
@@ -94,6 +95,17 @@ async def query_wiki(kb_slug: str, data: WikiQueryRequest, db: AsyncSession = De
 
     answer, referenced = await answer_question(kb.id, kb_slug, data.question, index_content, db)
     return WikiQueryResponse(answer=answer, referenced_pages=referenced)
+
+
+@router.post("/semantic-search", response_model=list[WikiPageListItem])
+async def semantic_search(kb_slug: str, data: SemanticSearchRequest, db: AsyncSession = Depends(get_db)):
+    kb = await _get_kb(kb_slug, db)
+    wiki_repo = WikiPageRepository(db)
+
+    from app.services.llm import embed
+
+    query_embedding = await embed(data.query)
+    return await wiki_repo.vector_search(kb.id, query_embedding, limit=data.limit)
 
 
 @router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)

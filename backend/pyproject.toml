@@ -27,6 +27,7 @@ dependencies = [
     "structlog>=24.4.0",
     "feedparser>=6.0.0",
     "apscheduler>=3.10.0",
+    "pgvector>=0.4.0",
 ]
 
 [project.optional-dependencies]

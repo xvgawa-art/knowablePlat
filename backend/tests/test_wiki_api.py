@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -152,3 +153,55 @@ async def test_search_wiki_pages(client: AsyncClient, kb_slug: str) -> None:
     resp3 = await client.get(f"/api/kb/{kb_slug}/wiki", params={"search": "不存在的关键词"})
     assert resp3.status_code == 200
     assert resp3.json() == []
+
+
+async def test_semantic_search(client: AsyncClient, kb_slug: str) -> None:
+    from app.database import async_sessionmaker
+    from app.repositories.wiki_page import WikiPageRepository
+
+    page_id = uuid.uuid4()
+    async with async_sessionmaker() as session:
+        async with session.begin():
+            from app.repositories.knowledge_base import KnowledgeBaseRepository
+
+            kb_repo = KnowledgeBaseRepository(session)
+            kb = await kb_repo.get_by_slug(kb_slug)
+            assert kb is not None
+
+            wiki_repo = WikiPageRepository(session)
+            page = await wiki_repo.create(
+                kb_id=kb.id,
+                slug="sql-injection",
+                title="SQL 注入攻击",
+                page_type="concept",
+                content="SQL 注入是一种将恶意 SQL 代码插入应用程序查询的技术",
+                source_ids=[],
+                outgoing_links=[],
+                incoming_links=[],
+            )
+            page_id = page.id
+
+    with (
+        patch("app.services.llm.embed") as mock_embed,
+        patch.object(WikiPageRepository, "vector_search") as mock_vs,
+    ):
+        from app.models.wiki_page import WikiPage, WikiPageType
+
+        mock_embed.return_value = [0.1] * 1536
+        mock_page = WikiPage(
+            kb_id=kb.id,
+            slug="sql-injection",
+            title="SQL 注入攻击",
+            page_type=WikiPageType.concept,
+        )
+        mock_page.id = page_id
+        mock_vs.return_value = [mock_page]
+
+        resp = await client.post(
+            f"/api/kb/{kb_slug}/wiki/semantic-search",
+            json={"query": "数据库攻击方式", "limit": 5},
+        )
+        assert resp.status_code == 200
+        pages = resp.json()
+        assert len(pages) >= 1
+        assert pages[0]["slug"] == "sql-injection"

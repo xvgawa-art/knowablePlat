@@ -53,3 +53,21 @@ async def generate_structured(prompt: str, schema: type[BaseModel], system: str 
             return schema.model_validate(block.input)
 
     raise ValueError("LLM did not return structured output")
+
+
+async def embed(text: str) -> list[float]:
+    """Generate embedding vector for text via the LLM provider's embedding endpoint."""
+    import httpx
+
+    base = settings.anthropic_base_url.rstrip("/")
+    embed_url = base.replace("/api/anthropic", "/api/paas/v4/embeddings")
+    async with httpx.AsyncClient() as http:
+        resp = await http.post(
+            embed_url,
+            json={"model": "embedding-3", "input": text[:2000]},
+            headers={"Authorization": f"Bearer {settings.anthropic_auth_token}", "Content-Type": "application/json"},
+            timeout=30,
+        )
+    resp.raise_for_status()
+    data = resp.json()
+    return data["data"][0]["embedding"]

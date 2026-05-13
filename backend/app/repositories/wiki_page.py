@@ -59,3 +59,16 @@ class WikiPageRepository(BaseRepository):
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def vector_search(self, kb_id: uuid.UUID, query_embedding: list[float], limit: int = 10) -> list[WikiPage]:
+        result = await self.session.execute(
+            select(WikiPage)
+            .where(WikiPage.kb_id == kb_id, WikiPage.embedding.isnot(None))
+            .order_by(WikiPage.embedding.l2_distance(query_embedding))
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def update_embedding(self, page: WikiPage, embedding: list[float]) -> None:
+        page.embedding = embedding
+        await self.session.flush()
