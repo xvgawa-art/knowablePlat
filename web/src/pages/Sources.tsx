@@ -89,7 +89,11 @@ export default function Sources() {
                     </span>
                   </div>
                 </div>
-                <p className="text-sm text-gray-500 mt-1 truncate">{source.url}</p>
+                <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                  <span className="truncate">{source.url}</span>
+                  <span>{new Date(source.created_at).toLocaleDateString("zh-CN")}</span>
+                  {source.token_usage > 0 && <span>{source.token_usage.toLocaleString()} tokens</span>}
+                </div>
               </Link>
             );
           })}

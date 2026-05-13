@@ -17,6 +17,7 @@ export interface Source {
   url: string;
   title: string | null;
   status: "pending" | "processing" | "completed" | "failed";
+  token_usage: number;
   fetched_at: string | null;
   created_at: string;
 }
