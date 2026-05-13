@@ -22,8 +22,13 @@ async def client():
 @pytest.fixture
 async def auth_headers(client: AsyncClient) -> dict[str, str]:
     uid = uuid.uuid4().hex[:8]
-    await client.post("/api/auth/register", json={"email": f"test-{uid}@example.com", "username": f"user-{uid}", "password": "password123"})
-    login_resp = await client.post("/api/auth/login", json={"email": f"test-{uid}@example.com", "password": "password123"})
+    await client.post(
+        "/api/auth/register",
+        json={"email": f"test-{uid}@example.com", "username": f"user-{uid}", "password": "password123"},
+    )
+    login_resp = await client.post(
+        "/api/auth/login", json={"email": f"test-{uid}@example.com", "password": "password123"}
+    )
     token = login_resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 

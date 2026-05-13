@@ -15,6 +15,7 @@ from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.notification import NotificationRepository
 from app.repositories.source import SourceRepository
 from app.repositories.wiki_page import WikiPageRepository
+from app.services.filesystem import save_wiki_index, save_wiki_log, save_wiki_page
 from app.services.llm import generate
 
 logger = structlog.get_logger()
@@ -191,6 +192,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     outgoing_links=[],
                     incoming_links=[],
                 )
+                save_wiki_page(kb_slug, source_slug, wiki_content)
 
                 # Step 3: Create/update entities
                 entities_data = extracted.get("entities", [])
@@ -223,6 +225,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                         outgoing_links=[source_slug],
                         incoming_links=[],
                     )
+                    save_wiki_page(kb_slug, entity_slug, entity_page.content)
                     await entity_repo.create(
                         kb_id=kb.id,
                         name=name,
@@ -254,16 +257,18 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                         incoming = list(set((existing_topic.incoming_links or []) + [source_slug]))
                         await wiki_repo.update(existing_topic, incoming_links=incoming)
                     else:
+                        concept_content = f"# {topic}\n\n## 概要\n\n（待补充）\n\n## 相关\n\n- [[{source_slug}]]"
                         await wiki_repo.create(
                             kb_id=kb.id,
                             slug=topic_slug,
                             title=topic,
                             page_type=WikiPageType.concept,
-                            content=f"# {topic}\n\n## 概要\n\n（待补充）\n\n## 相关\n\n- [[{source_slug}]]",
+                            content=concept_content,
                             source_ids=[str(source.id)],
                             outgoing_links=[source_slug],
                             incoming_links=[],
                         )
+                        save_wiki_page(kb_slug, topic_slug, concept_content)
 
                 # Step 6: Update index
                 all_pages = await wiki_repo.list_by_kb(kb.id, limit=500)
@@ -282,6 +287,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                         outgoing_links=[],
                         incoming_links=[],
                     )
+                save_wiki_index(kb_slug, index_content)
 
                 # Step 7: Log activity
                 await log_repo.create(
@@ -290,6 +296,8 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     target=source_slug,
                     details={"title": title, "source_url": source.url},
                 )
+                log_entry = f"## [{datetime.now(UTC).strftime('%Y-%m-%d')}] ingest | {title}"
+                save_wiki_log(kb_slug, log_entry)
 
                 # Step 8: Create notification with LLM-generated summary and related points
                 from app.services.notification import generate_ingest_notification

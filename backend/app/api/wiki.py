@@ -153,3 +153,7 @@ async def delete_wiki_page(kb_slug: str, slug: str, db: AsyncSession = Depends(g
             await wiki_repo.update(other, outgoing_links=updated)
 
     await wiki_repo.delete(page)
+
+    from app.services.filesystem import delete_wiki_page as delete_wiki_file
+
+    delete_wiki_file(kb_slug, slug)

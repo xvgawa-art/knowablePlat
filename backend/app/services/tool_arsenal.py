@@ -13,6 +13,7 @@ from app.repositories.activity_log import ActivityLogRepository
 from app.repositories.entity import EntityRepository
 from app.repositories.notification import NotificationRepository
 from app.repositories.wiki_page import WikiPageRepository
+from app.services.filesystem import save_wiki_index, save_wiki_log, save_wiki_page
 from app.services.llm import generate
 
 logger = structlog.get_logger()
@@ -184,6 +185,7 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     outgoing_links=[],
                     incoming_links=[],
                 )
+                save_wiki_page(kb_slug, tool_slug, tool_content)
 
                 # Step 4: Create entity for the tool
                 await entity_repo.create(
@@ -218,6 +220,7 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                         outgoing_links=[tool_slug],
                         incoming_links=[],
                     )
+                save_wiki_page(kb_slug, category_slug, category_content)
 
                 # Step 6: Cross-reference with similar tools
                 tool_page_outgoing = [category_slug]
@@ -245,6 +248,7 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                         outgoing_links=[],
                         incoming_links=[],
                     )
+                save_wiki_index(kb_slug, index_content)
 
                 # Step 8: Log activity
                 await log_repo.create(
@@ -253,6 +257,8 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     target=tool_slug,
                     details={"title": tool_name, "category": category_name, "source_url": source.url},
                 )
+                log_entry = f"## [{datetime.now(UTC).strftime('%Y-%m-%d')}] ingest | {tool_name} ({category_name})"
+                save_wiki_log(kb_slug, log_entry)
 
                 # Step 9: Create notification with LLM summary
                 from app.services.notification import generate_ingest_notification

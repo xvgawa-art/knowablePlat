@@ -48,6 +48,9 @@ async def _ingest_source(source_id: uuid.UUID, kb_slug: str) -> None:
                 content = await fetch_url(source.url)
                 source.raw_content = content
                 source.status = SourceStatus.processing
+                from app.services.filesystem import save_raw_content
+
+                save_raw_content(kb_slug, str(source_id), content)
             except Exception:
                 source.status = SourceStatus.failed
 
