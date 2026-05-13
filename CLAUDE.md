@@ -1,0 +1,577 @@
+# KnowablePlat — LLM 驱动的知识管理平台
+
+## 项目概述
+
+一个全栈知识管理平台，灵感来自 Karpathy 的 LLM-Wiki 模式。用户提交在线文章链接，系统抓取并存储，然后使用 LLM 增量构建和维护一个结构化、互相链接的 wiki。通过网页端进行浏览、查询和学习。
+
+**核心理念：** 不同于 RAG（每次查询都从原始文档检索），LLM 增量构建并维护一个**持久的 wiki** —— 一个结构化、互相链接的 Markdown 文件集合。知识只编译一次并持续更新，而非每次查询重新推导。每添加一个新来源、每提一个问题，wiki 都会变得更丰富。
+
+**关键差异：wiki 是一个持久的、可复利的产物。** 交叉引用已经建立，矛盾已经标记，综合分析已反映所有已读内容。人类负责策展来源、引导分析、提出好问题。LLM 负责其余所有工作——摘要、交叉引用、归档、簿记。
+
+**仓库地址：** https://github.com/xvgawa-art/knowablePlat
+
+**技术栈：** Python 3.13 + FastAPI + PostgreSQL + Next.js + Redis
+
+**三层架构（Karpathy LLM-Wiki 模式）：**
+1. **Raw Sources（原始来源层）** — 不可变的源文档（抓取的文章、PDF、用户笔记）。LLM 只读不写。
+2. **The Wiki（Wiki 层）** — LLM 生成的结构化 Markdown：摘要页、实体页、概念页、对比页、交叉引用。LLM 完全拥有这一层。
+3. **The Schema（Schema 层）** — 本 CLAUDE.md + 配置文件，告诉 LLM wiki 的结构、约定和操作流程。
+
+---
+
+## 项目架构
+
+```
+knowableplat/
+├── CLAUDE.md                  # 本文件 — 项目规则与上下文
+├── llm-wiki.md                # Karpathy LLM-Wiki 原始 idea 文件（参考）
+├── test_link.md               # 测试用的在线文档链接
+├── README.md                  # 用户文档
+├── docker-compose.yml         # 全栈部署配置
+├── pyproject.toml             # Python 项目配置 (uv)
+├── docs/                      # 项目文档（全部中文）
+│   ├── architecture.md        # 架构设计文档
+│   ├── api.md                 # API 接口文档
+│   ├── ingest-pipeline.md     # Ingest 流水线文档
+│   ├── query-pipeline.md      # Query 查询流水线文档
+│   ├── learning-system.md     # 学习系统文档
+│   └── deployment.md          # 部署运维文档
+│
+├── backend/
+│   ├── app/
+│   │   ├── main.py            # FastAPI 入口
+│   │   ├── config.py          # 配置 & 环境变量
+│   │   ├── models/            # 数据模型
+│   │   │   ├── source.py      # 原始来源文档
+│   │   │   ├── wiki_page.py   # Wiki 页面
+│   │   │   ├── entity.py      # 实体（人物、概念、组织）
+│   │   │   └── log.py         # 操作日志
+│   │   ├── api/               # REST API 路由
+│   │   │   ├── sources.py     # 来源 CRUD + URL 抓取
+│   │   │   ├── wiki.py        # Wiki 浏览/搜索/查询
+│   │   │   ├── learn.py       # 学习 & 测验
+│   │   │   └── auth.py        # 用户认证
+│   │   ├── services/          # 业务逻辑
+│   │   │   ├── fetcher.py     # URL → 干净 Markdown (Firecrawl/Jina)
+│   │   │   ├── ingest.py      # 来源 → wiki 页面 流水线
+│   │   │   ├── wiki_engine.py # Wiki 维护（交叉引用、lint、更新）
+│   │   │   ├── query.py       # 问题 → 带引用的回答
+│   │   │   ├── llm.py         # LLM 抽象层 (Anthropic/OpenAI)
+│   │   │   └── learning.py    # 间隔重复 & 测题生成
+│   │   ├── prompts/           # LLM 提示词模板
+│   │   │   ├── ingest_extract.md      # 提取实体、概念、论点
+│   │   │   ├── ingest_synthesize.md   # 生成 wiki 页面内容
+│   │   │   ├── ingest_crossref.md     # 查找与已有 wiki 的关联
+│   │   │   ├── query_answer.md        # 基于 wiki 上下文回答问题
+│   │   │   ├── lint_contradictions.md # 检测页面间矛盾
+│   │   │   ├── learn_quiz.md          # 从 wiki 内容生成测验题
+│   │   │   └── learn_flashcard.md     # 生成闪卡
+│   │   ├── wiki/              # Wiki 层（LLM 生成的 Markdown）
+│   │   │   ├── index.md       # 内容目录（每次 ingest 自动更新）
+│   │   │   ├── log.md         # 按时间排列的活动日志
+│   │   │   ├── entities/      # 实体页面（人物、组织、工具）
+│   │   │   ├── concepts/      # 概念/主题页面
+│   │   │   ├── comparisons/   # 对比 & 分析页面
+│   │   │   └── sources/       # 来源摘要页面
+│   │   └── raw/               # 原始来源文档（不可变）
+│   │       └── assets/        # 下载的图片
+│   ├── tests/
+│   ├── alembic/               # 数据库迁移
+│   └── alembic.ini
+│
+├── web/                       # Next.js 网页前端（唯一客户端）
+│   ├── package.json
+│   ├── src/
+│   │   ├── app/               # Next.js App Router 页面
+│   │   │   ├── layout.tsx     # 全局布局（侧边栏 + 顶栏）
+│   │   │   ├── page.tsx       # 仪表盘首页
+│   │   │   ├── wiki/          # Wiki 浏览器（图谱视图、搜索、详情）
+│   │   │   │   └── [slug]/    # Wiki 页面详情
+│   │   │   ├── sources/       # 来源管理（提交 URL、列表、详情）
+│   │   │   ├── learn/         # 学习 & 复习（闪卡、测验、统计）
+│   │   │   └── chat/          # 对话查询界面
+│   │   ├── components/        # 共享 UI 组件
+│   │   │   ├── Sidebar.tsx    # 侧边导航栏
+│   │   │   ├── MarkdownRenderer.tsx  # Wiki Markdown 渲染器
+│   │   │   ├── GraphView.tsx  # 知识图谱可视化
+│   │   │   ├── SearchBar.tsx  # 全局搜索
+│   │   │   └── FlashCard.tsx  # 闪卡组件
+│   │   └── lib/               # API 客户端、工具函数
+│   └── tailwind.config.ts
+│
+└── scripts/
+    ├── seed_demo.py           # 填充演示数据
+    └── lint_wiki.py           # Wiki 健康检查脚本
+```
+
+---
+
+## 网页端页面设计
+
+### 整体布局
+- **左侧：** 固定侧边导航栏（Wiki、来源、学习、对话）
+- **顶部：** 搜索栏 + 用户头像
+- **主区域：** 根据当前路由显示内容
+
+### 页面列表
+
+| 页面 | 路由 | 功能 |
+|------|------|------|
+| 仪表盘 | `/` | 概览统计（来源数、wiki 页数、待复习数、最近活动） |
+| Wiki 浏览 | `/wiki` | wiki 页面列表，支持按类型/标签筛选，图谱视图切换 |
+| Wiki 详情 | `/wiki/[slug]` | 单个 wiki 页面内容、反向链接、相关页面 |
+| 来源列表 | `/sources` | 已提交的来源列表，状态（处理中/完成/失败） |
+| 提交来源 | `/sources` (modal) | 输入 URL 弹窗，显示处理进度 |
+| 来源详情 | `/sources/[id]` | 原始内容 + 生成的 wiki 页面列表 |
+| 学习首页 | `/learn` | 今日待复习、学习统计、连续打卡 |
+| 闪卡复习 | `/learn/review` | 滑动式闪卡，SM-2 评分 |
+| 测验 | `/learn/quiz/[slug]` | LLM 生成的测验题 |
+| 对话查询 | `/chat` | 自然语言问答，带 wiki 引用的回答 |
+| 图谱视图 | `/wiki/graph` | wiki 页面关系的力导向图可视化 |
+
+### 响应式设计
+- 桌面端（>= 1024px）：完整侧边栏 + 宽内容区
+- 平板端（768-1023px）：可折叠侧边栏
+- 手机浏览器（< 768px）：底部标签栏 + 全屏内容，支持移动端操作
+
+---
+
+## LLM-Wiki 操作流程
+
+### Ingest（摄入）流水线
+
+当用户提交一个 URL：
+
+1. **抓取（Fetch）** — 使用 Firecrawl/Jina Reader 将 URL 转为干净的 Markdown
+2. **存储原始内容** — 保存到 `raw/` 目录（不可变），在 `sources` 表中记录
+3. **提取（Extract）** — LLM 阅读来源，提取关键实体、概念、论点
+4. **撰写摘要页** — 创建 `wiki/sources/<slug>.md` 结构化摘要
+5. **更新实体页** — 创建或更新 `wiki/entities/<entity>.md`
+6. **更新概念页** — 创建或更新 `wiki/concepts/<topic>.md`
+7. **交叉引用** — 将新内容与已有 wiki 页面链接（双向 `[[wikilinks]]`）
+8. **更新索引** — 刷新 `wiki/index.md` 加入新条目
+9. **追加日志** — 向 `wiki/log.md` 添加条目：`## [YYYY-MM-DD] ingest | 文章标题`
+10. **标记矛盾** — 如果新来源与已有论点矛盾，创建 `wiki/comparisons/` 对比页
+
+一个来源可能涉及 10-15 个 wiki 页面。LLM 完成所有交叉引用和维护工作。
+
+### Query（查询）流水线
+
+当用户提出问题：
+
+1. **读取索引** — LLM 先读 `wiki/index.md` 找到相关页面
+2. **深入阅读** — 读取与问题相关的具体 wiki 页面
+3. **综合回答** — 生成带 `[[wikilink]]` 引用的回答
+4. **可选：归档回答** — 如果回答有价值（对比、分析），保存为新的 wiki 页面
+
+**好的回答可以回存到 wiki。** 你的探索在知识库中复利积累，和摄入的来源一样。
+
+### Lint（健康检查）
+
+定期审核 wiki 健康状况：
+- 页面间的矛盾
+- 被新来源取代的过时论点
+- 没有入链的孤儿页面
+- 被提及但缺少独立页面的重要概念
+- 缺失的交叉引用
+- 可通过网络搜索填补的数据空白
+
+LLM 擅长建议新的调查问题和新的来源。这让 wiki 在增长过程中保持健康。
+
+### 索引与日志
+
+**`wiki/index.md`** — 内容目录。按类别组织，每个页面列出链接、一行摘要、可选元数据（日期、来源数量）。LLM 每次查询先读索引定位相关页面。在中等规模（~100 个来源、~数百页面）下效果很好，无需向量 RAG 基础设施。
+
+**`wiki/log.md`** — 按时间排列的活动日志。只追加。统一前缀格式：`## [YYYY-MM-DD] ingest | 文章标题`。可用简单工具解析：`grep "^## \[" wiki/log.md | tail -5`。
+
+---
+
+## Wiki 页面格式
+
+每个 wiki 页面遵循以下 frontmatter 结构：
+
+```markdown
+---
+title: 页面标题
+type: source | entity | concept | comparison | answer
+created: 2026-05-13
+updated: 2026-05-13
+sources:
+  - source-slug-1
+  - source-slug-2
+tags: [标签1, 标签2]
+---
+
+# 页面标题
+
+## 概要
+<!-- 一段综合摘要 -->
+
+## 关键要点
+<!-- 从来源中提取的要点列表 -->
+
+## 详细内容
+<!-- 完整内容 -->
+
+## 相关
+<!-- [[wikilinks]] 到相关页面 -->
+
+## 来源
+<!-- 引用回原始来源 -->
+```
+
+---
+
+## 数据库设计
+
+### sources（来源表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| url | string, unique | 来源 URL |
+| title | string | 文章标题 |
+| raw_content | text | 原始抓取的 Markdown |
+| status | enum | pending / processing / completed / failed |
+| fetched_at | datetime | 抓取时间 |
+| created_at / updated_at | datetime | 创建/更新时间 |
+
+### wiki_pages（Wiki 页面表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| slug | string, unique | URL 友好标识符 |
+| title | string | 页面标题 |
+| type | enum | source / entity / concept / comparison / answer |
+| content | text | Markdown 内容 |
+| frontmatter | JSON | 解析后的 YAML frontmatter |
+| source_ids | UUID[] | 关联的来源文档 |
+| outgoing_links | string[] | 本页面链接到的 slug |
+| incoming_links | string[] | 链接到本页面的 slug（反规范化） |
+| created_at / updated_at | datetime | 创建/更新时间 |
+
+### entities（实体表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| name | string, unique | 实体名称 |
+| type | enum | person / organization / tool / concept / event |
+| aliases | string[] | 别名列表 |
+| wiki_page_id | UUID, FK | 关联 wiki 页面 |
+| created_at / updated_at | datetime | 创建/更新时间 |
+
+### activity_log（活动日志表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| action | enum | ingest / query / lint / update |
+| target | string | 页面 slug 或来源 URL |
+| details | JSON | 操作元数据 |
+| created_at | datetime | 创建时间 |
+
+### learning（学习表）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID, PK | 主键 |
+| user_id | UUID, FK | 用户 ID |
+| wiki_page_id | UUID, FK | 关联 wiki 页面 |
+| interval | integer | 距下次复习的天数 |
+| ease_factor | float | SM-2 算法参数 |
+| repetitions | integer | 重复次数 |
+| next_review | date | 下次复习日期 |
+| last_reviewed | date | 上次复习日期 |
+
+---
+
+## API 设计
+
+### 来源管理
+- `POST /api/sources` — 提交 URL 进行摄入（异步任务）
+- `GET /api/sources` — 列出所有来源（分页）
+- `GET /api/sources/{id}` — 获取来源详情 + 原始内容
+- `DELETE /api/sources/{id}` — 删除来源及关联 wiki 页面
+
+### Wiki 操作
+- `GET /api/wiki` — 列出 wiki 页面（可按类型、标签、搜索过滤）
+- `GET /api/wiki/{slug}` — 获取 wiki 页面内容 + 反向链接
+- `GET /api/wiki/graph` — 获取链接图谱数据（用于可视化）
+- `POST /api/wiki/query` — 提问，获取带引用的综合回答
+- `POST /api/wiki/lint` — 触发 wiki 健康检查
+
+### 学习系统
+- `GET /api/learn/due` — 获取今日待复习页面
+- `POST /api/learn/review` — 提交复习结果（更新 SM-2 调度）
+- `GET /api/learn/quiz/{slug}` — 为 wiki 页面生成测验题
+- `GET /api/learn/stats` — 用户学习统计
+
+### 认证
+- `POST /api/auth/register` — 注册
+- `POST /api/auth/login` — 登录
+- `GET /api/auth/me` — 当前用户信息
+
+---
+
+## LLM 集成
+
+### Provider 抽象
+
+通过统一接口支持多个 LLM 提供商：
+
+```python
+class LLMProvider(Protocol):
+    async def generate(self, prompt: str, system: str = "") -> str: ...
+    async def generate_structured(self, prompt: str, schema: type[BaseModel]) -> BaseModel: ...
+```
+
+默认：Anthropic Claude（Sonnet 用于 wiki 生成，Haiku 用于快速查询）。
+
+### Token 管理
+
+- 在 Redis 中缓存 wiki 索引（避免每次查询重新读取）
+- 实体提取使用结构化输出（JSON mode）以减少 token 消耗
+- 向 LLM 输入上下文时批量合并小页面
+- 在活动日志中按来源记录 token 使用量
+
+---
+
+## 学习系统（网页端）
+
+### 间隔重复（SM-2 算法）
+
+在 `backend/app/services/learning.py` 中实现：
+1. 用户阅读 wiki 页面 → 页面进入复习队列
+2. 从页面内容生成测验（多选 + 简答）
+3. 用户作答 → 质量评分（0-5）
+4. SM-2 计算下次复习日期、难度因子、重复次数
+5. `GET /api/learn/due` 返回待复习页面
+
+### 测验生成
+
+LLM 从 wiki 页面生成题目：
+- **多选题** — 概念理解
+- **填空题** — 关键事实和定义
+- **判断题** — 论点验证
+- **简答题** — 综合分析
+
+### 网页端学习流程
+
+1. 进入学习页面 → 查看待复习数量和连续打卡
+2. 滑动闪卡式复习（左右滑动，上滑"记住了"，下拉"再看看"）
+3. 回答测验题（即时反馈 + 正确答案解释）
+4. 学习统计图表（复习量趋势、掌握率、连续打卡）
+
+---
+
+## 开发环境
+
+```bash
+# 后端
+cd backend
+uv venv .venv
+.venv\Scripts\activate          # Windows
+uv pip install -e ".[dev]"
+
+# 数据库（通过 Docker Desktop）
+docker compose up -d postgres redis
+
+# 运行数据库迁移
+alembic upgrade head
+
+# 启动后端
+uvicorn app.main:app --reload --port 8000
+
+# 网页前端
+cd web
+npm install
+npm run dev                     # http://localhost:3000
+
+# 测试
+pytest --cov=app tests/
+```
+
+---
+
+## Claude Loop 工作流
+
+**注意：始终先处理已有改进再提出新建议。**
+
+1. **提议** — 如果没有已有的 open issue，先写计划
+2. **实现** — 编写代码、测试和文档
+3. **验证** — `pytest --cov` 必须通过，新代码覆盖率 >= 80%
+4. **提交 & 推送** — 描述性提交信息，推送到 GitHub
+5. **学习** — 将新约定记录到本文件
+6. **循环** — 进入下一个最高优先级功能
+
+### 规则
+
+- **绝不跳过测试。** 每个功能至少一个测试。详见下方「开发规则」。
+- **绝不跳过 lint。** 推送前运行 `ruff check` 和 `ruff format`。
+- **绝不跳过文档。** 新增或修改组件后，更新 `docs/` 中对应文档。
+- **每个提交一个功能。**
+- **每个功能完成后推送。** 测试通过后执行 `git push origin main`。
+- **发现新约定时更新本文件。**
+
+---
+
+## Git 约定
+
+- **分支：** 在 `main` 分支上开发（单人项目）
+- **远程仓库：** `https://github.com/xvgawa-art/knowablePlat`
+- **提交格式：** `feat: 描述` — 前缀：`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
+- **推送：** 每个功能测试通过后推送
+
+---
+
+## 开发规则
+
+### 测试规则
+
+- **实现功能后，必须编写单元测试。** 测试不是可选项。每个新函数、类或工作流节点都需要测试覆盖。
+- **修改现有代码后，检查现有测试是否需要更新。** 如果你改变了核心行为，测试必须反映新行为。如果只是重构而未改变行为，现有测试应不变且仍然通过。
+- **拿不准是否需要测试时：** 如果代码包含逻辑（条件判断、循环、错误处理、状态转换），就需要测试。
+
+### 组件复用规则
+
+- **实现新功能前，先检查现有组件能力。** 阅读 `docs/` 中相关文档，了解代码中已有哪些能力可用。
+- **修改组件后，更新其文档并审计调用方。**
+  1. 更新 `docs/` 中对应的文档文件，反映新的接口或行为
+  2. 搜索被修改组件的所有调用点，验证它们是否仍然正常工作
+  3. 如果某个调用方的行为会因此改变，更新该调用方及其测试
+
+### 文档规则
+
+- **所有文档必须使用中文编写。** `docs/` 目录下的文档、代码注释、README 等，均须使用中文。代码标识符（变量名、函数名、类名）保持英文不变。
+
+---
+
+## 代码风格
+
+### 后端（Python）
+
+- **Python 3.13** 所有函数必须有 type hints
+- **格式化：** `ruff format`（行宽 120）
+- **Lint：** `ruff check` — 不得无故使用 `# noqa`
+- **命名：** 函数/变量用 snake_case，类用 PascalCase，常量用 UPPER_SNAKE
+- **导入顺序：** stdlib → 第三方 → 本地，用 `isort` 排序
+- **异步：** 所有 I/O 操作使用 `async/await`（数据库、LLM、HTTP）
+- **依赖注入：** 使用 FastAPI 的 `Depends()` 模式
+- **错误处理：** 在 `app/exceptions.py` 中定义自定义异常类，通过 exception handler 映射到 HTTP 响应
+- **日志：** 生产环境使用 `structlog` JSON 输出
+- **测试：** pytest + pytest-asyncio，描述性名称：`test_ingest_url_creates_wiki_pages()`
+- **不允许 TODO 注释** — 要么实现，要么创建 GitHub issue
+
+### 前端（Next.js / React）
+
+- **TypeScript 严格模式** — 禁止 `any` 类型
+- **格式化：** Prettier（printWidth 120, singleQuote, trailingComma all）
+- **Lint：** ESLint + Next.js 配置
+- **组件：** 函数组件 + hooks，PascalCase 文件名
+- **状态管理：** TanStack Query 管理服务端状态，Zustand 管理客户端状态
+- **样式：** Tailwind CSS — 使用工具类，避免自定义 CSS
+- **API 客户端：** 从 OpenAPI schema 通过 `openapi-typescript` 生成
+- **响应式：** 移动端优先设计，断点：sm(640) / md(768) / lg(1024) / xl(1280)
+
+---
+
+## Lint 规则
+
+### 后端
+
+- **ruff：** line-length 120，目标 Python 3.13
+- **禁止裸 except** — 必须指定异常类型
+- **禁止 print 语句** — 使用 `structlog` 日志
+- **禁止硬编码密钥** — 使用环境变量或 `.env`
+- **所有函数签名必须有 type hints**
+- **测试必须是异步的** — 使用 `pytest-asyncio`
+
+### 前端
+
+- **禁止 `any` 类型** — 使用正确的 TypeScript 类型
+- **禁止内联样式** — 使用 Tailwind 工具类
+- **禁止直接 `fetch`** — 使用 OpenAPI schema 生成的 API 客户端
+- **组件不超过 200 行** — 拆分为更小的组件
+- **默认使用 Server Components** — 只在需要时添加 `"use client"`
+
+### Wiki 内容
+
+- **每个页面都有 frontmatter** — title, type, created, updated, sources, tags
+- **Wikilinks 是双向的** — 当页面 A 链接到 B 时，B 的 incoming_links 包含 A
+- **来源引用必须** — 每个论点都必须能追溯到原始来源
+- **不允许孤儿页面** — 每个页面至少有一个入链
+- **每次 ingest 必须有日志条目** — 格式：`## [YYYY-MM-DD] ingest | 标题`
+
+---
+
+## 不确定时规则
+
+- **FastAPI 模式：** 不确定依赖注入、中间件或后台任务时，查阅 [FastAPI 文档](https://fastapi.tiangolo.com/) —— 不要猜测 API 签名。
+- **LLM 提示词设计：** 不确定 wiki 操作的提示词结构时，参考 [llm-wiki.md](llm-wiki.md) 中的原则 —— wiki 是一个持久的、可复利的产物。
+- **SM-2 算法：** 实现间隔重复时，遵循 [SM-2 原始规范](https://super-memory.com/english/ol/sm2.htm) —— 不要自行发明调度逻辑。
+- **URL 抓取：** URL 抓取失败时，尝试备用抓取器（Firecrawl → Jina → 原始 HTTP + readability）。记录失败日志以便调试。
+- **Wiki 一致性：** 当 wiki 增长超过 ~100 页时，考虑添加搜索引擎（qmd 或 pgvector），而不是仅依赖 `index.md`。
+
+---
+
+## 测试链接
+
+用于验证 Ingest 流水线的在线文档链接（见 `test_link.md`）：
+
+1. `https://www.51cto.com/article/842354.html` — 51CTO 技术文章
+2. `https://mp.weixin.qq.com/s/XrF8CtUUqu79HYyWXAPiBg` — 微信公众号文章
+3. `https://zhuanlan.zhihu.com/p/2033117550712705501` — 知乎专栏文章
+
+**注意：** 微信公众号和知乎文章可能需要特殊抓取策略（反爬机制）。优先使用 Jina Reader（`https://r.jina.ai/`）作为备选方案。
+
+---
+
+## 优先级 & 路线图
+
+### 第一阶段 — 核心 Ingest & Wiki（MVP）
+1. URL 抓取服务（Firecrawl/Jina）
+2. 来源存储（数据库 + 文件系统）
+3. LLM Ingest 流水线（来源 → wiki 页面）
+4. Wiki 页面 CRUD API
+5. `index.md` + `log.md` 自动维护
+6. 基础网页 UI：提交 URL、浏览 wiki 页面
+
+### 第二阶段 — 查询 & 搜索
+7. 对 wiki 的自然语言查询
+8. 全文搜索（PostgreSQL tsvector）
+9. 向量搜索（pgvector 语义搜索）
+10. 图谱可视化（wiki 页面关系）
+11. 回答归档（保存优质回答为 wiki 页面）
+
+### 第三阶段 — 学习系统（网页端）
+12. SM-2 间隔重复服务
+13. 通过 LLM 生成测验/闪卡
+14. 闪卡复习界面（滑动交互）
+15. 学习统计 & 连续打卡追踪
+
+### 第四阶段 — 完善 & 扩展
+16. Wiki 健康检查（lint）自动化
+17. 页面间矛盾检测
+18. 批量摄入（多个 URL）
+19. 浏览器扩展（快速保存文章）
+20. Obsidian 兼容导出
+21. 多用户支持
+
+---
+
+## 关键参考
+
+- [Karpathy LLM-Wiki 原始模式](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — 本项目的核心灵感来源
+- [Firecrawl API](https://docs.firecrawl.dev/) — URL 转 Markdown
+- [Jina Reader API](https://jina.ai/reader/) — 备选 URL 转 Markdown
+- [SM-2 间隔重复算法](https://super-memory.com/english/ol/sm2.htm)
+- [FastAPI 文档](https://fastapi.tiangolo.com/)
+- [Next.js App Router](https://nextjs.org/docs/app)
+- [Tailwind CSS](https://tailwindcss.com/)
+
+---
+
+## 运维须知
+
+- **原始来源不可变** — 初始抓取后绝不修改 `raw/` 中的文件
+- **Wiki 归 LLM 所有** — LLM 编写和维护所有 wiki 内容；用户只负责指导和审阅
+- **异步摄入** — URL 处理是后台任务（通过 FastAPI BackgroundTasks）。前端轮询状态。
+- **Token 预算** — 按来源记录 LLM token 使用量。单个来源超过 50K token 时告警。
+- **备份** — wiki 就是 Markdown 文件 + 数据库。wiki 文件通过 Git 版本控制提供历史。
