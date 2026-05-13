@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router";
 import { api } from "../api/client";
 import type { KnowledgeBase } from "../types";
 
@@ -86,17 +87,29 @@ export default function KnowledgeBases() {
       <div className="space-y-4">
         {knowledgeBases.map((kb) => (
           <div key={kb.id} className="bg-white p-4 rounded-lg border border-gray-200 flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-gray-900">{kb.name}</h3>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-gray-900">{kb.name}</h3>
+                {kb.is_system && (
+                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded">系统</span>
+                )}
+              </div>
               <p className="text-sm text-gray-500">{kb.slug}</p>
+              {kb.description && (
+                <p className="text-sm text-gray-400 mt-1 line-clamp-1">{kb.description}</p>
+              )}
+              <div className="flex gap-3 mt-1 text-xs text-gray-400">
+                <span>{kb.source_count} 来源</span>
+                <span>{kb.wiki_page_count} Wiki</span>
+              </div>
             </div>
             <div className="flex gap-2">
-              <a
-                href={`/kb/${kb.slug}`}
+              <Link
+                to={`/kb/${kb.slug}`}
                 className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100"
               >
                 进入
-              </a>
+              </Link>
               <button
                 onClick={() => {
                   if (confirm(`确定删除知识库「${kb.name}」？`)) deleteMutation.mutate(kb.slug);
