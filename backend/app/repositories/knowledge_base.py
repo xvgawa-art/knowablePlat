@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_base import KbType, KnowledgeBase
@@ -47,3 +47,19 @@ class KnowledgeBaseRepository(BaseRepository):
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def refresh_counts(self, kb_id: str) -> None:
+        """Update denormalized source_count and wiki_page_count from actual data."""
+        from app.models.source import Source
+        from app.models.wiki_page import WikiPage
+
+        source_count = await self.session.scalar(
+            select(func.count()).select_from(Source).where(Source.kb_id == kb_id)
+        )
+        wiki_count = await self.session.scalar(
+            select(func.count()).select_from(WikiPage).where(WikiPage.kb_id == kb_id)
+        )
+        kb = await self.get_by_id(kb_id)
+        if kb:
+            kb.source_count = source_count or 0
+            kb.wiki_page_count = wiki_count or 0

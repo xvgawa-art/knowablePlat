@@ -306,6 +306,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                 source.fetched_at = datetime.now(UTC).replace(tzinfo=None)
 
                 logger.info("ingest_completed", source_id=str(source_id), title=title)
+                await kb_repo.refresh_counts(str(kb.id))
 
             except Exception as e:
                 from app.models.source import SourceStatus

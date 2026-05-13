@@ -255,6 +255,7 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                 source.status = SourceStatus.completed
                 source.fetched_at = datetime.now(UTC).replace(tzinfo=None)
                 logger.info("tool_ingest_completed", source_id=str(source_id), tool=tool_name, category=category_name)
+                await kb_repo.refresh_counts(str(kb.id))
 
             except Exception as e:
                 source.status = SourceStatus.failed
