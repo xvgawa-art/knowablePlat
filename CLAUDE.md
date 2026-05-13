@@ -26,7 +26,8 @@
 knowableplat/
 ├── CLAUDE.md                  # 本文件 — 项目规则与上下文
 ├── llm-wiki.md                # Karpathy LLM-Wiki 原始 idea 文件（参考）
-├── test_link.md               # 测试用的在线文档链接
+├── test_link.md               # URL 抓取测试链接
+├── RSS_test.md                # RSS 订阅源测试链接
 ├── README.md                  # 用户文档
 ├── docker-compose.yml         # 全栈部署配置
 ├── pyproject.toml             # Python 项目配置 (uv)
@@ -676,6 +677,16 @@ pytest --cov=app tests/
 3. `https://zhuanlan.zhihu.com/p/2033117550712705501` — 知乎专栏文章
 
 **注意：** 微信公众号和知乎文章可能需要特殊抓取策略（反爬机制）。优先使用 Jina Reader（`https://r.jina.ai/`）作为备选方案。
+
+### RSS 订阅源测试链接
+
+用于验证 RSS 订阅流水线的在线订阅源（见 `RSS_test.md`）：
+
+1. `https://www.v2ex.com/feed/tab/hot.xml` — V2EX 热门话题（RSS 2.0）
+2. `https://hnrss.org/frontpage` — Hacker News 首页（RSS 2.0）
+3. `https://www.ithome.com/rss/` — IT之家资讯（RSS 2.0）
+
+**注意：** 这些订阅源更新频率高、条目多，适合测试 RSS 轮询、去重和批量 Ingest 的稳定性。建议配置过滤规则控制摄入量。
 
 ---
 
