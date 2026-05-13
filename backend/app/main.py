@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import IntegrityError
 
 from app.api.auth import router as auth_router
 from app.api.generate import router as generate_router
@@ -13,6 +14,16 @@ from app.api.sources import router as sources_router
 from app.api.wiki import router as wiki_router
 from app.config import ensure_dirs
 from app.database import async_sessionmaker
+from app.exceptions import (
+    BadRequestError,
+    ForbiddenError,
+    NotFoundError,
+    bad_request_handler,
+    forbidden_handler,
+    generic_error_handler,
+    integrity_error_handler,
+    not_found_handler,
+)
 
 
 async def _init_tool_arsenal() -> None:
@@ -95,6 +106,12 @@ app.include_router(notif_router)
 app.include_router(global_notif_router)
 app.include_router(rss_router)
 app.include_router(generate_router)
+
+app.add_exception_handler(NotFoundError, not_found_handler)
+app.add_exception_handler(ForbiddenError, forbidden_handler)
+app.add_exception_handler(BadRequestError, bad_request_handler)
+app.add_exception_handler(IntegrityError, integrity_error_handler)
+app.add_exception_handler(Exception, generic_error_handler)
 
 
 @app.get("/api/health")
