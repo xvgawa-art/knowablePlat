@@ -2,15 +2,26 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api } from "../api/client";
-import type { NotificationList } from "../types";
+import type { KnowledgeBase, NotificationList } from "../types";
 
 export default function Notifications() {
   const queryClient = useQueryClient();
   const [showUnread, setShowUnread] = useState(false);
+  const [filterKbId, setFilterKbId] = useState<string | null>(null);
+
+  const { data: knowledgeBases = [] } = useQuery<KnowledgeBase[]>({
+    queryKey: ["knowledgeBases"],
+    queryFn: () => api.get("/knowledge-bases"),
+  });
 
   const { data, isLoading } = useQuery<NotificationList>({
-    queryKey: ["notifications", showUnread],
-    queryFn: () => api.get("/notifications", showUnread ? { unread: "true" } : undefined),
+    queryKey: ["notifications", showUnread, filterKbId],
+    queryFn: () => {
+      const params: Record<string, string> = {};
+      if (showUnread) params.unread = "true";
+      if (filterKbId) params.kb_id = filterKbId;
+      return api.get("/notifications", params);
+    },
   });
 
   const markReadMutation = useMutation({
@@ -19,7 +30,10 @@ export default function Notifications() {
   });
 
   const markAllReadMutation = useMutation({
-    mutationFn: () => api.put("/notifications/read-all"),
+    mutationFn: () => {
+      const params = filterKbId ? { kb_id: filterKbId } : undefined;
+      return api.put(`/notifications/read-all${params ? `?kb_id=${filterKbId}` : ""}`);
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
   });
 
@@ -36,7 +50,19 @@ export default function Notifications() {
             </span>
           )}
         </h1>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          <select
+            value={filterKbId ?? ""}
+            onChange={(e) => setFilterKbId(e.target.value || null)}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white"
+          >
+            <option value="">全部知识库</option>
+            {knowledgeBases.map((kb) => (
+              <option key={kb.id} value={kb.id}>
+                {kb.name}
+              </option>
+            ))}
+          </select>
           <button
             onClick={() => setShowUnread(!showUnread)}
             className={`px-3 py-1.5 text-sm rounded-md ${
