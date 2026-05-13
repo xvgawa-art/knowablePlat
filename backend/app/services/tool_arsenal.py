@@ -15,7 +15,7 @@ from app.repositories.entity import EntityRepository
 from app.repositories.notification import NotificationRepository
 from app.repositories.wiki_page import WikiPageRepository
 from app.services.filesystem import save_wiki_index, save_wiki_log, save_wiki_page
-from app.services.llm import generate, generate_with_usage
+from app.services.llm import embed, generate, generate_with_usage
 
 logger = structlog.get_logger()
 
@@ -122,6 +122,16 @@ async def _generate_tool_page_with_usage(tool_info: dict, existing_tools: list[d
     return resp.text, resp.total_tokens
 
 
+async def _embed_wiki_page(wiki_repo: WikiPageRepository, page) -> None:
+    """Generate and store embedding for a wiki page. Non-blocking failure."""
+    try:
+        text = f"{page.title}\n{page.content[:2000]}"
+        embedding = await embed(text)
+        await wiki_repo.update_embedding(page, embedding)
+    except Exception:
+        logger.warning("embed_failed", slug=page.slug)
+
+
 async def _generate_category_page(
     category_name: str, category_slug: str, tools: list[dict], recommendations: list[dict]
 ) -> str:
@@ -212,6 +222,7 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     incoming_links=[],
                 )
                 save_wiki_page(kb_slug, tool_slug, tool_content)
+                await _embed_wiki_page(wiki_repo, tool_page)
 
                 # Step 4: Create entity for the tool
                 await entity_repo.create(
@@ -247,6 +258,8 @@ async def run_tool_arsenal_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                         incoming_links=[],
                     )
                 save_wiki_page(kb_slug, category_slug, category_content)
+                if existing_category:
+                    await _embed_wiki_page(wiki_repo, existing_category)
 
                 # Step 6: Cross-reference with similar tools
                 tool_page_outgoing = [category_slug]

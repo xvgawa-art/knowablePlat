@@ -105,3 +105,27 @@ async def test_build_index_content() -> None:
     assert "实体" in result
     assert "page-1" in result
     assert "page-2" in result
+
+
+async def test_embed_wiki_page_success() -> None:
+    from app.models.wiki_page import WikiPage, WikiPageType
+    from app.services.ingest import _embed_wiki_page
+
+    mock_page = WikiPage(slug="test", title="测试", page_type=WikiPageType.source, kb_id=uuid.uuid4(), content="内容")
+    mock_repo = AsyncMock()
+
+    with patch("app.services.ingest.embed", new_callable=AsyncMock, return_value=[0.1, 0.2, 0.3]):
+        await _embed_wiki_page(mock_repo, mock_page)
+        mock_repo.update_embedding.assert_called_once_with(mock_page, [0.1, 0.2, 0.3])
+
+
+async def test_embed_wiki_page_handles_failure() -> None:
+    from app.models.wiki_page import WikiPage, WikiPageType
+    from app.services.ingest import _embed_wiki_page
+
+    mock_page = WikiPage(slug="test", title="测试", page_type=WikiPageType.source, kb_id=uuid.uuid4(), content="内容")
+    mock_repo = AsyncMock()
+
+    with patch("app.services.ingest.embed", new_callable=AsyncMock, side_effect=RuntimeError("API error")):
+        await _embed_wiki_page(mock_repo, mock_page)
+        mock_repo.update_embedding.assert_not_called()

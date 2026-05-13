@@ -17,7 +17,7 @@ from app.repositories.notification import NotificationRepository
 from app.repositories.source import SourceRepository
 from app.repositories.wiki_page import WikiPageRepository
 from app.services.filesystem import save_wiki_index, save_wiki_log, save_wiki_page
-from app.services.llm import generate, generate_with_usage
+from app.services.llm import embed, generate, generate_with_usage
 
 logger = structlog.get_logger()
 
@@ -137,6 +137,16 @@ async def _find_cross_references_with_usage(
     return [], resp.total_tokens
 
 
+async def _embed_wiki_page(wiki_repo: WikiPageRepository, page: WikiPage) -> None:
+    """Generate and store embedding for a wiki page. Non-blocking failure."""
+    try:
+        text = f"{page.title}\n{page.content[:2000]}"
+        embedding = await embed(text)
+        await wiki_repo.update_embedding(page, embedding)
+    except Exception:
+        logger.warning("embed_failed", slug=page.slug)
+
+
 async def _build_index_content(pages: list[WikiPage]) -> str:
     """Generate index.md content for a knowledge base."""
     lines = ["# 知识库目录\n"]
@@ -226,6 +236,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     incoming_links=[],
                 )
                 save_wiki_page(kb_slug, source_slug, wiki_content)
+                await _embed_wiki_page(wiki_repo, wiki_page)
 
                 # Step 3: Create/update entities
                 entities_data = extracted.get("entities", [])
@@ -259,6 +270,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                         incoming_links=[],
                     )
                     save_wiki_page(kb_slug, entity_slug, entity_page.content)
+                    await _embed_wiki_page(wiki_repo, entity_page)
                     await entity_repo.create(
                         kb_id=kb.id,
                         name=name,
@@ -294,7 +306,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                         await wiki_repo.update(existing_topic, incoming_links=incoming)
                     else:
                         concept_content = f"# {topic}\n\n## 概要\n\n（待补充）\n\n## 相关\n\n- [[{source_slug}]]"
-                        await wiki_repo.create(
+                        concept_page = await wiki_repo.create(
                             kb_id=kb.id,
                             slug=topic_slug,
                             title=topic,
@@ -305,6 +317,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                             incoming_links=[],
                         )
                         save_wiki_page(kb_slug, topic_slug, concept_content)
+                        await _embed_wiki_page(wiki_repo, concept_page)
 
                 # Step 6: Update index
                 all_pages = await wiki_repo.list_by_kb(kb.id, limit=500)
