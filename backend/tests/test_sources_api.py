@@ -95,3 +95,51 @@ async def test_batch_create_with_duplicate(client: AsyncClient, kb_slug: str) ->
     assert resp.status_code == 201
     sources = resp.json()
     assert len(sources) == 2
+
+
+async def test_retry_failed_source(client: AsyncClient, kb_slug: str) -> None:
+    from unittest.mock import patch
+
+    from app.database import async_sessionmaker
+    from app.models.source import SourceStatus
+    from app.repositories.knowledge_base import KnowledgeBaseRepository
+    from app.repositories.source import SourceRepository
+
+    # Create a source and mark it as failed
+    async with async_sessionmaker() as session:
+        async with session.begin():
+            kb_repo = KnowledgeBaseRepository(session)
+            kb = await kb_repo.get_by_slug(kb_slug)
+            source_repo = SourceRepository(session)
+            source = await source_repo.create(
+                kb_id=kb.id, url="https://example.com/fail-test", status=SourceStatus.failed
+            )
+            source_id = source.id
+
+    with patch("app.api.sources._ingest_source"):
+        resp = await client.post(f"/api/kb/{kb_slug}/sources/{source_id}/retry")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "processing"
+
+
+async def test_retry_non_failed_source(client: AsyncClient, kb_slug: str) -> None:
+    from app.database import async_sessionmaker
+    from app.repositories.knowledge_base import KnowledgeBaseRepository
+    from app.repositories.source import SourceRepository
+
+    async with async_sessionmaker() as session:
+        async with session.begin():
+            kb_repo = KnowledgeBaseRepository(session)
+            kb = await kb_repo.get_by_slug(kb_slug)
+            source_repo = SourceRepository(session)
+            source = await source_repo.create(kb_id=kb.id, url="https://example.com/completed-test")
+            source_id = source.id
+
+    resp = await client.post(f"/api/kb/{kb_slug}/sources/{source_id}/retry")
+    assert resp.status_code == 400
+
+
+async def test_retry_not_found(client: AsyncClient, kb_slug: str) -> None:
+    resp = await client.post(f"/api/kb/{kb_slug}/sources/{uuid.uuid4()}/retry")
+    assert resp.status_code == 404

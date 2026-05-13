@@ -121,3 +121,18 @@ async def delete_source(kb_slug: str, source_id: uuid.UUID, db: AsyncSession = D
     if source is None or source.kb_id != kb.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="来源不存在")
     await _source_repo(db).delete(source)
+
+
+@router.post("/{source_id}/retry", response_model=SourceResponse)
+async def retry_source(
+    kb_slug: str, source_id: uuid.UUID, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
+):
+    kb = await _get_kb(kb_slug, db)
+    source = await _source_repo(db).get_by_id(source_id)
+    if source is None or source.kb_id != kb.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="来源不存在")
+    if source.status != SourceStatus.failed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只能重试失败的来源")
+    source.status = SourceStatus.processing
+    background_tasks.add_task(_ingest_source, source.id, kb_slug)
+    return source
