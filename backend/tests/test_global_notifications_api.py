@@ -140,3 +140,18 @@ async def test_mark_all_read_by_kb(client: AsyncClient, seeded_notifications: di
 
     count_resp = await client.get("/api/notifications/unread-count", params={"kb_id": kb_id})
     assert count_resp.json()["unread_count"] == 0
+
+
+async def test_mark_notification_read_not_found(client: AsyncClient) -> None:
+    fake_id = str(uuid.uuid4())
+    resp = await client.put(f"/api/notifications/{fake_id}/read")
+    assert resp.status_code == 404
+
+
+async def test_notifications_include_kb_slug(client: AsyncClient, seeded_notifications: dict) -> None:
+    resp = await client.get("/api/notifications")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) > 0
+    for item in items:
+        assert "kb_slug" in item
