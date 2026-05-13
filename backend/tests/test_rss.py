@@ -1,4 +1,6 @@
-from app.services.rss_fetcher import _entry_matches_filters, _parse_feed
+import pytest
+
+from app.services.rss_fetcher import _entry_matches_filters, _parse_feed, ingest_new_entries
 
 
 def test_parse_feed_basic() -> None:
@@ -47,3 +49,10 @@ def test_entry_matches_filters_combined() -> None:
     }
     assert _entry_matches_filters(entry, ["sql"], ["Charlie"], None) is True
     assert _entry_matches_filters(entry, ["sql"], ["Dave"], None) is False
+
+
+@pytest.mark.asyncio
+async def test_ingest_new_entries_no_kb() -> None:
+    """ingest_new_entries returns 0 when kb doesn't exist."""
+    result = await ingest_new_entries("nonexistent-feed", "nonexistent-kb")
+    assert result == 0

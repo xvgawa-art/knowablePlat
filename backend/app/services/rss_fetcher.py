@@ -112,4 +112,115 @@ async def poll_feed(feed_id: str, kb_slug: str) -> int:
             feed.total_fetched += new_count
 
             logger.info("rss_poll_complete", feed_id=str(feed_id), new_entries=new_count)
-            return new_count
+
+    # Ingest new entries outside the poll transaction
+    if new_count > 0:
+        await ingest_new_entries(feed_id, kb_slug)
+
+    return new_count
+
+
+async def ingest_new_entries(feed_id: str, kb_slug: str) -> int:
+    """Find new RSS entries and run the ingest pipeline for each.
+
+    Returns the number of entries processed.
+    """
+    from app.database import async_sessionmaker
+    from app.models.knowledge_base import KbType
+    from app.repositories.knowledge_base import KnowledgeBaseRepository
+    from app.repositories.source import SourceRepository
+    from app.services.fetcher import fetch_url
+    from app.services.ingest import run_ingest_pipeline
+    from app.services.tool_arsenal import run_tool_arsenal_pipeline
+
+    processed = 0
+
+    async with async_sessionmaker() as session:
+        async with session.begin():
+            kb_repo = KnowledgeBaseRepository(session)
+            source_repo = SourceRepository(session)
+
+            kb = await kb_repo.get_by_slug(kb_slug)
+            if not kb:
+                return 0
+
+            from sqlalchemy import select
+
+            from app.models.rss_entry import RssEntry
+
+            result = await session.execute(
+                select(RssEntry).where(
+                    RssEntry.feed_id == feed_id,
+                    RssEntry.status == EntryStatus.new,
+                )
+            )
+            entries = list(result.scalars().all())
+
+            for entry in entries:
+                try:
+                    entry.status = EntryStatus.ingesting
+                    await session.flush()
+
+                    content = await fetch_url(entry.url)
+                    from app.models.source import SourceStatus
+
+                    source = await source_repo.create(
+                        kb_id=kb.id,
+                        url=entry.url,
+                        title=entry.title,
+                        raw_content=content,
+                        status=SourceStatus.processing,
+                    )
+                    entry.source_id = source.id
+                    await session.flush()
+
+                    from app.services.filesystem import save_raw_content
+
+                    save_raw_content(kb_slug, str(source.id), content)
+
+                    entry.status = EntryStatus.completed
+                    from datetime import UTC, datetime
+
+                    entry.fetched_at = datetime.now(UTC).replace(tzinfo=None)
+                    processed += 1
+
+                except Exception as e:
+                    entry.status = EntryStatus.failed
+                    logger.error("rss_entry_ingest_failed", entry_id=str(entry.id), url=entry.url, error=str(e))
+
+    # Run wiki ingest pipelines for the created sources
+    async with async_sessionmaker() as session:
+        async with session.begin():
+            source_repo = SourceRepository(session)
+
+            from sqlalchemy import select
+
+            from app.models.rss_entry import RssEntry
+            from app.models.source import SourceStatus
+
+            result = await session.execute(
+                select(RssEntry).where(
+                    RssEntry.feed_id == feed_id,
+                    RssEntry.source_id.isnot(None),
+                    RssEntry.status == EntryStatus.completed,
+                )
+            )
+            completed_entries = list(result.scalars().all())
+
+            for entry in completed_entries:
+                if not entry.source_id:
+                    continue
+                source = await source_repo.get_by_id(entry.source_id)
+                if not source or source.status != SourceStatus.processing:
+                    continue
+
+                try:
+                    if kb.kb_type == KbType.tool_arsenal:
+                        await run_tool_arsenal_pipeline(source.id, kb_slug)
+                    else:
+                        await run_ingest_pipeline(source.id, kb_slug)
+                except Exception as e:
+                    logger.error("rss_source_ingest_failed", source_id=str(source.id), error=str(e))
+
+    logger.info("rss_entries_ingested", feed_id=feed_id, processed=processed)
+    return processed
