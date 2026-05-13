@@ -66,3 +66,13 @@ async def test_me(client: AsyncClient, user_data: dict) -> None:
 async def test_me_no_token(client: AsyncClient) -> None:
     resp = await client.get("/api/auth/me")
     assert resp.status_code in (401, 403)
+
+
+async def test_login_nonexistent_email(client: AsyncClient) -> None:
+    resp = await client.post("/api/auth/login", json={"email": "nobody@example.com", "password": "whatever"})
+    assert resp.status_code == 401
+
+
+async def test_register_missing_fields(client: AsyncClient) -> None:
+    resp = await client.post("/api/auth/register", json={"email": "a@b.com"})
+    assert resp.status_code == 422
