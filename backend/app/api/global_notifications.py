@@ -75,9 +75,4 @@ async def mark_notification_read(notification_id: uuid.UUID, db: AsyncSession = 
 @router.put("/read-all", status_code=status.HTTP_204_NO_CONTENT)
 async def mark_all_read(kb_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db)):
     notif_repo = NotificationRepository(db)
-    if kb_id:
-        await notif_repo.mark_all_read(kb_id)
-    else:
-        items = await notif_repo.list_all(unread_only=True, limit=10000)
-        for item in items:
-            await notif_repo.mark_read(item.id)
+    await notif_repo.mark_all_read(kb_id)

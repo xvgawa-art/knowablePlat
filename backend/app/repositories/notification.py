@@ -40,8 +40,9 @@ class NotificationRepository(BaseRepository):
         result = await self.session.execute(query)
         return result.scalar() or 0
 
-    async def mark_all_read(self, kb_id: uuid.UUID) -> None:
-        await self.session.execute(
-            update(Notification).where(Notification.kb_id == kb_id, Notification.is_read == False).values(is_read=True)  # noqa: E712
-        )
+    async def mark_all_read(self, kb_id: uuid.UUID | None = None) -> None:
+        query = update(Notification).where(Notification.is_read == False).values(is_read=True)  # noqa: E712
+        if kb_id:
+            query = query.where(Notification.kb_id == kb_id)
+        await self.session.execute(query)
         await self.session.flush()

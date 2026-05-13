@@ -1,10 +1,16 @@
 import { useState } from "react";
+import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router";
 import { api } from "../api/client";
-import type { KnowledgeBase, NotificationList } from "../types";
+import type { KnowledgeBase, Notification, NotificationList } from "../types";
 
 export default function Notifications() {
+  const { id } = useParams();
+  if (id) return <NotificationDetail notificationId={id} />;
+  return <NotificationList />;
+}
+
+function NotificationList() {
   const queryClient = useQueryClient();
   const [showUnread, setShowUnread] = useState(false);
   const [filterKbId, setFilterKbId] = useState<string | null>(null);
@@ -31,8 +37,8 @@ export default function Notifications() {
 
   const markAllReadMutation = useMutation({
     mutationFn: () => {
-      const params = filterKbId ? { kb_id: filterKbId } : undefined;
-      return api.put(`/notifications/read-all${params ? `?kb_id=${filterKbId}` : ""}`);
+      const params = filterKbId ? `?kb_id=${filterKbId}` : "";
+      return api.put(`/notifications/read-all${params}`);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
   });
@@ -88,68 +94,139 @@ export default function Notifications() {
       ) : (
         <div className="space-y-3">
           {notifications.map((notif) => (
-            <div
+            <NotificationCard
               key={notif.id}
-              className={`p-4 bg-white rounded-lg border ${
-                notif.is_read ? "border-gray-200" : "border-blue-300 bg-blue-50/30"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">{notif.title}</h3>
-                  {notif.summary && (
-                    <p className="mt-2 text-sm text-gray-600">{notif.summary}</p>
-                  )}
-                  {notif.related_points &&
-                    Array.isArray(notif.related_points) &&
-                    notif.related_points.length > 0 && (
-                      <div className="mt-3 space-y-1">
-                        <p className="text-xs font-medium text-gray-500">关联知识点：</p>
-                        {notif.related_points.map((point, i) => {
-                          if (typeof point === "object" && point !== null && "wiki_page_slug" in point) {
-                            const p = point as {
-                              wiki_page_slug?: string;
-                              title?: string;
-                              relation_desc?: string;
-                            };
-                            const kbSlug = notif.kb_slug;
-                            return kbSlug && p.wiki_page_slug ? (
-                              <Link
-                                key={i}
-                                to={`/kb/${kbSlug}/wiki/${p.wiki_page_slug}`}
-                                className="block text-sm text-blue-600 hover:underline"
-                              >
-                                {p.title ?? p.wiki_page_slug}
-                                {p.relation_desc ? ` — ${p.relation_desc}` : ""}
-                              </Link>
-                            ) : (
-                              <p key={i} className="text-sm text-gray-500">
-                                {p.title ?? "未知页面"}
-                              </p>
-                            );
-                          }
-                          return null;
-                        })}
-                      </div>
-                    )}
-                  <p className="mt-2 text-xs text-gray-400">
-                    {new Date(notif.created_at).toLocaleString("zh-CN")}
-                  </p>
-                </div>
-                {!notif.is_read && (
-                  <button
-                    onClick={() => markReadMutation.mutate(notif.id)}
-                    disabled={markReadMutation.isPending}
-                    className="ml-4 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 disabled:opacity-50"
-                  >
-                    标记已读
-                  </button>
-                )}
-              </div>
-            </div>
+              notification={notif}
+              onMarkRead={() => markReadMutation.mutate(notif.id)}
+              isMarking={markReadMutation.isPending}
+            />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function NotificationCard({
+  notification,
+  onMarkRead,
+  isMarking,
+}: {
+  notification: Notification;
+  onMarkRead: () => void;
+  isMarking: boolean;
+}) {
+  return (
+    <div
+      className={`p-4 bg-white rounded-lg border ${
+        notification.is_read ? "border-gray-200" : "border-blue-300 bg-blue-50/30"
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <Link
+            to={`/notifications/${notification.id}`}
+            className="font-semibold text-gray-900 hover:text-blue-600"
+          >
+            {notification.title}
+          </Link>
+          {notification.summary && (
+            <p className="mt-1 text-sm text-gray-600 line-clamp-2">{notification.summary}</p>
+          )}
+          <p className="mt-1 text-xs text-gray-400">
+            {new Date(notification.created_at).toLocaleString("zh-CN")}
+          </p>
+        </div>
+        {!notification.is_read && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              onMarkRead();
+            }}
+            disabled={isMarking}
+            className="ml-4 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 disabled:opacity-50"
+          >
+            标记已读
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NotificationDetail({ notificationId }: { notificationId: string }) {
+  const queryClient = useQueryClient();
+
+  const { data: notification, isLoading } = useQuery<Notification>({
+    queryKey: ["notification", notificationId],
+    queryFn: () => api.get(`/notifications/${notificationId}`),
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: () => api.put(`/notifications/${notificationId}/read`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notification", notificationId] }),
+  });
+
+  if (isLoading) return <div className="p-8 text-gray-500">加载中...</div>;
+  if (!notification) return <div className="p-8 text-red-600">通知不存在</div>;
+
+  const relatedPoints = Array.isArray(notification.related_points) ? notification.related_points : [];
+
+  return (
+    <div className="p-8 max-w-4xl">
+      <Link to="/notifications" className="text-sm text-blue-600 hover:text-blue-800">
+        返回通知列表
+      </Link>
+
+      <div className="mt-4 bg-white p-6 rounded-lg border border-gray-200">
+        <div className="flex items-start justify-between">
+          <h1 className="text-xl font-bold text-gray-900">{notification.title}</h1>
+          {!notification.is_read && (
+            <button
+              onClick={() => markReadMutation.mutate()}
+              disabled={markReadMutation.isPending}
+              className="px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded hover:bg-blue-100 disabled:opacity-50"
+            >
+              标记已读
+            </button>
+          )}
+        </div>
+
+        {notification.summary && <p className="mt-4 text-gray-700 leading-relaxed">{notification.summary}</p>}
+
+        {relatedPoints.length > 0 && (
+          <div className="mt-6">
+            <h2 className="text-sm font-medium text-gray-500 mb-3">关联知识点</h2>
+            <div className="space-y-2">
+              {relatedPoints.map((point, i) => {
+                if (typeof point === "object" && point !== null && "wiki_page_slug" in point) {
+                  const p = point as { wiki_page_slug?: string; title?: string; relation_desc?: string };
+                  const kbSlug = notification.kb_slug;
+                  return kbSlug && p.wiki_page_slug ? (
+                    <Link
+                      key={i}
+                      to={`/kb/${kbSlug}/wiki/${p.wiki_page_slug}`}
+                      className="block px-3 py-2 text-sm bg-gray-50 rounded-md hover:bg-blue-50 text-blue-600"
+                    >
+                      {p.title ?? p.wiki_page_slug}
+                      {p.relation_desc ? <span className="text-gray-500 ml-2">— {p.relation_desc}</span> : ""}
+                    </Link>
+                  ) : (
+                    <p key={i} className="px-3 py-2 text-sm text-gray-500 bg-gray-50 rounded-md">
+                      {p.title ?? "未知页面"}
+                    </p>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          </div>
+        )}
+
+        <p className="mt-4 text-xs text-gray-400">
+          {new Date(notification.created_at).toLocaleString("zh-CN")}
+        </p>
+      </div>
     </div>
   );
 }

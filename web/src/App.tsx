@@ -45,6 +45,7 @@ export default function App() {
         <Route path="kb/:kbSlug/chat" element={<Chat />} />
         <Route path="kb/:kbSlug/rss" element={<RssManager />} />
         <Route path="notifications" element={<Notifications />} />
+        <Route path="notifications/:id" element={<Notifications />} />
         <Route path="tools" element={<ToolArsenal />} />
         <Route path="generate" element={<Generate />} />
         <Route path="generate/history" element={<GenerateHistory />} />
