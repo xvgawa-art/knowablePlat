@@ -3,8 +3,8 @@ import uuid
 import pytest
 
 from app.models.knowledge_base import KbType, KnowledgeBase
-from app.models.source import Source, SourceStatus
-from app.models.wiki_page import WikiPage, WikiPageType
+from app.models.source import SourceStatus
+from app.models.wiki_page import WikiPageType
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.source import SourceRepository
 from app.repositories.wiki_page import WikiPageRepository

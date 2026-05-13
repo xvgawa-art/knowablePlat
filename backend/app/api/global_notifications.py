@@ -28,19 +28,26 @@ async def _enrich_with_kb_slug(items: list, db: AsyncSession) -> list[dict]:
 
 @router.get("", response_model=NotificationListResponse)
 async def list_all_notifications(
-    unread: bool = False, offset: int = 0, limit: int = 50, db: AsyncSession = Depends(get_db)
+    unread: bool = False,
+    kb_id: uuid.UUID | None = None,
+    offset: int = 0,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
 ):
     notif_repo = NotificationRepository(db)
-    items = await notif_repo.list_all(unread_only=unread, offset=offset, limit=limit)
-    unread_count = await notif_repo.count_unread()
+    if kb_id:
+        items = await notif_repo.list_by_kb(kb_id, unread_only=unread, offset=offset, limit=limit)
+    else:
+        items = await notif_repo.list_all(unread_only=unread, offset=offset, limit=limit)
+    unread_count = await notif_repo.count_unread(kb_id=kb_id)
     enriched = await _enrich_with_kb_slug(items, db)
     return NotificationListResponse(items=enriched, unread_count=unread_count)
 
 
 @router.get("/unread-count")
-async def get_unread_count(db: AsyncSession = Depends(get_db)):
+async def get_unread_count(kb_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db)):
     notif_repo = NotificationRepository(db)
-    count = await notif_repo.count_unread()
+    count = await notif_repo.count_unread(kb_id=kb_id)
     return {"unread_count": count}
 
 
@@ -66,8 +73,11 @@ async def mark_notification_read(notification_id: uuid.UUID, db: AsyncSession = 
 
 
 @router.put("/read-all", status_code=status.HTTP_204_NO_CONTENT)
-async def mark_all_read(db: AsyncSession = Depends(get_db)):
+async def mark_all_read(kb_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db)):
     notif_repo = NotificationRepository(db)
-    items = await notif_repo.list_all(unread_only=True, limit=10000)
-    for item in items:
-        await notif_repo.mark_read(item.id)
+    if kb_id:
+        await notif_repo.mark_all_read(kb_id)
+    else:
+        items = await notif_repo.list_all(unread_only=True, limit=10000)
+        for item in items:
+            await notif_repo.mark_read(item.id)

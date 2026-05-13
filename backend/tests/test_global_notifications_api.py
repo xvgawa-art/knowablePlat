@@ -108,3 +108,35 @@ async def test_mark_all_read(client: AsyncClient, seeded_notifications: dict) ->
 
     count_resp = await client.get("/api/notifications/unread-count")
     assert count_resp.json()["unread_count"] == 0
+
+
+async def test_list_notifications_filter_by_kb(client: AsyncClient, seeded_notifications: dict) -> None:
+    from app.database import async_sessionmaker
+    from app.repositories.knowledge_base import KnowledgeBaseRepository
+
+    async with async_sessionmaker() as session:
+        kb_repo = KnowledgeBaseRepository(session)
+        kb = await kb_repo.get_by_slug(seeded_notifications["kb_slug"])
+        kb_id = str(kb.id)
+
+    resp = await client.get("/api/notifications", params={"kb_id": kb_id})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["items"]) >= 3
+    assert all(item["kb_id"] == kb_id for item in body["items"])
+
+
+async def test_mark_all_read_by_kb(client: AsyncClient, seeded_notifications: dict) -> None:
+    from app.database import async_sessionmaker
+    from app.repositories.knowledge_base import KnowledgeBaseRepository
+
+    async with async_sessionmaker() as session:
+        kb_repo = KnowledgeBaseRepository(session)
+        kb = await kb_repo.get_by_slug(seeded_notifications["kb_slug"])
+        kb_id = str(kb.id)
+
+    resp = await client.put("/api/notifications/read-all", params={"kb_id": kb_id})
+    assert resp.status_code == 204
+
+    count_resp = await client.get("/api/notifications/unread-count", params={"kb_id": kb_id})
+    assert count_resp.json()["unread_count"] == 0

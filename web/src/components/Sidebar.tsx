@@ -108,7 +108,7 @@ export default function Sidebar() {
                 key={item.to}
                 to={item.to}
                 className={`block px-3 py-2 rounded-md text-sm ${
-                  location.pathname === item.to
+                  location.pathname === item.to || (item.to !== `/kb/${kbSlug}` && location.pathname.startsWith(item.to))
                     ? "bg-blue-50 text-blue-700"
                     : "text-gray-700 hover:bg-gray-100"
                 }`}
