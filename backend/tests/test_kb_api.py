@@ -19,6 +19,15 @@ async def client():
         yield c
 
 
+@pytest.fixture
+async def auth_headers(client: AsyncClient) -> dict[str, str]:
+    uid = uuid.uuid4().hex[:8]
+    await client.post("/api/auth/register", json={"email": f"test-{uid}@example.com", "username": f"user-{uid}", "password": "password123"})
+    login_resp = await client.post("/api/auth/login", json={"email": f"test-{uid}@example.com", "password": "password123"})
+    token = login_resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 async def test_health_check(client: AsyncClient) -> None:
     resp = await client.get("/api/health")
     assert resp.status_code == 200
@@ -64,34 +73,34 @@ async def test_get_kb_not_found(client: AsyncClient) -> None:
     assert resp.status_code == 404
 
 
-async def test_update_kb(client: AsyncClient, kb_data: dict) -> None:
-    create_resp = await client.post("/api/knowledge-bases", json=kb_data)
+async def test_update_kb(client: AsyncClient, kb_data: dict, auth_headers: dict[str, str]) -> None:
+    create_resp = await client.post("/api/knowledge-bases", json=kb_data, headers=auth_headers)
     slug = create_resp.json()["slug"]
 
     new_name = f"更新后-{uuid.uuid4().hex[:6]}"
-    resp = await client.put(f"/api/knowledge-bases/{slug}", json={"name": new_name})
+    resp = await client.put(f"/api/knowledge-bases/{slug}", json={"name": new_name}, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["name"] == new_name
 
 
-async def test_delete_kb(client: AsyncClient, kb_data: dict) -> None:
-    create_resp = await client.post("/api/knowledge-bases", json=kb_data)
+async def test_delete_kb(client: AsyncClient, kb_data: dict, auth_headers: dict[str, str]) -> None:
+    create_resp = await client.post("/api/knowledge-bases", json=kb_data, headers=auth_headers)
     slug = create_resp.json()["slug"]
 
-    resp = await client.delete(f"/api/knowledge-bases/{slug}")
+    resp = await client.delete(f"/api/knowledge-bases/{slug}", headers=auth_headers)
     assert resp.status_code == 204
 
     resp = await client.get(f"/api/knowledge-bases/{slug}")
     assert resp.status_code == 404
 
 
-async def test_cannot_delete_tool_arsenal(client: AsyncClient) -> None:
-    resp = await client.delete("/api/knowledge-bases/tool-arsenal")
+async def test_cannot_delete_tool_arsenal(client: AsyncClient, auth_headers: dict[str, str]) -> None:
+    resp = await client.delete("/api/knowledge-bases/tool-arsenal", headers=auth_headers)
     assert resp.status_code == 403
 
 
-async def test_cannot_update_tool_arsenal(client: AsyncClient) -> None:
-    resp = await client.put("/api/knowledge-bases/tool-arsenal", json={"name": "hacked"})
+async def test_cannot_update_tool_arsenal(client: AsyncClient, auth_headers: dict[str, str]) -> None:
+    resp = await client.put("/api/knowledge-bases/tool-arsenal", json={"name": "hacked"}, headers=auth_headers)
     assert resp.status_code == 403
 
 

@@ -25,6 +25,7 @@ class KnowledgeBaseUpdate(BaseModel):
 
 class KnowledgeBaseResponse(BaseModel):
     id: uuid.UUID
+    user_id: uuid.UUID | None = None
     name: str
     slug: str
     description: str | None

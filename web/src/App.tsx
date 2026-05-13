@@ -15,6 +15,7 @@ import ToolArsenal from "./pages/ToolArsenal";
 import WikiBrowser from "./pages/WikiBrowser";
 import WikiDetail from "./pages/WikiDetail";
 import GraphView from "./pages/GraphView";
+import Login from "./pages/Login";
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="generate/history/:docId" element={<GenerateHistory />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="login" element={<Login />} />
     </Routes>
   );
 }

@@ -136,6 +136,27 @@ export default function Sidebar() {
             </option>
           ))}
         </select>
+
+        <div className="mt-3 flex gap-2">
+          {localStorage.getItem("token") ? (
+            <button
+              onClick={() => {
+                localStorage.removeItem("token");
+                window.location.href = "/login";
+              }}
+              className="w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md"
+            >
+              退出登录
+            </button>
+          ) : (
+            <Link
+              to="/login"
+              className="w-full text-center px-3 py-2 text-sm text-blue-600 hover:text-blue-800 border border-blue-300 rounded-md"
+            >
+              登录
+            </Link>
+          )}
+        </div>
       </div>
     </aside>
   );

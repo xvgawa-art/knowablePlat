@@ -30,3 +30,20 @@ class KnowledgeBaseRepository(BaseRepository):
             kb_type=KbType.tool_arsenal,
             is_system=True,
         )
+
+    async def list_by_user(self, user_id: str, offset: int = 0, limit: int = 50) -> list[KnowledgeBase]:
+        from sqlalchemy import or_
+
+        result = await self.session.execute(
+            select(KnowledgeBase)
+            .where(
+                or_(
+                    KnowledgeBase.user_id == user_id,
+                    KnowledgeBase.is_public,
+                    KnowledgeBase.is_system,
+                )
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.scalars().all())

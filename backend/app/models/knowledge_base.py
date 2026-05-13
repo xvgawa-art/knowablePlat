@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Boolean, Enum, Integer, String
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
@@ -14,6 +14,7 @@ class KbType(enum.StrEnum):
 class KnowledgeBase(BaseModel):
     __tablename__ = "knowledge_bases"
 
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     slug: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
