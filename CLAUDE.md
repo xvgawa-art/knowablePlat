@@ -10,7 +10,13 @@
 
 **仓库地址：** https://github.com/xvgawa-art/knowablePlat
 
-**技术栈：** Python 3.13 + FastAPI + PostgreSQL + Next.js + Redis
+**技术栈：** Python 3.13 + FastAPI + PostgreSQL + React (Vite SPA) + Redis
+
+**架构原则：客户端-服务端严格分离**
+- **服务端（FastAPI）** — 承担所有业务逻辑、数据处理、LLM 调用、数据库操作。对外暴露 REST API。
+- **客户端（React SPA）** — 只是一个 UI 壳，负责渲染界面和转发用户操作。不包含任何业务逻辑，不直接访问数据库或调用 LLM。
+- **通信方式** — 客户端通过 REST API 与服务端交互。所有数据来自 API 响应，所有操作通过 API 请求发起。
+- **部署方式** — 生产环境中 FastAPI 同时托管 API 和前端静态文件（`/api/*` 走 API，其余走 SPA）。开发时前后端独立运行。
 
 **多层架构（Karpathy LLM-Wiki 模式 + 知识库分类）：**
 1. **Knowledge Bases（知识库层）** — 用户创建的独立知识库（如「Web 安全」「鸿蒙安全」「AI 安全」），每个知识库拥有独立的 wiki 空间、来源集合和学习队列。知识库之间互不干扰。
@@ -94,24 +100,33 @@ knowableplat/
 │   ├── alembic/               # 数据库迁移
 │   └── alembic.ini
 │
-├── web/                       # Next.js 网页前端（唯一客户端）
+├── web/                       # React SPA 前端（纯 UI 壳）
+│   ├── index.html             # 唯一 HTML 入口
 │   ├── package.json
+│   ├── vite.config.ts         # Vite 构建配置
 │   ├── src/
-│   │   ├── app/               # Next.js App Router 页面
-│   │   │   ├── layout.tsx     # 全局布局（侧边栏 + 顶栏）
-│   │   │   ├── page.tsx       # 仪表盘首页
-│   │   │   ├── wiki/          # Wiki 浏览器（图谱视图、搜索、详情）
-│   │   │   │   └── [slug]/    # Wiki 页面详情
-│   │   │   ├── sources/       # 来源管理（提交 URL、列表、详情）
-│   │   │   ├── learn/         # 学习 & 复习（闪卡、测验、统计）
-│   │   │   └── chat/          # 对话查询界面
+│   │   ├── main.tsx           # SPA 入口
+│   │   ├── App.tsx            # 根组件（路由挂载）
+│   │   ├── pages/             # 页面组件（纯展示 + API 调用）
+│   │   │   ├── Dashboard.tsx  # 仪表盘
+│   │   │   ├── KnowledgeBases.tsx  # 知识库管理
+│   │   │   ├── WikiBrowser.tsx     # Wiki 浏览
+│   │   │   ├── WikiDetail.tsx      # Wiki 页面详情
+│   │   │   ├── Sources.tsx         # 来源管理
+│   │   │   ├── RssManager.tsx      # RSS 订阅管理
+│   │   │   ├── Learn.tsx           # 学习 & 复习
+│   │   │   ├── Chat.tsx            # 对话查询
+│   │   │   ├── Generate.tsx        # 知识生成
+│   │   │   └── GenerateHistory.tsx # 生成历史
 │   │   ├── components/        # 共享 UI 组件
 │   │   │   ├── Sidebar.tsx    # 侧边导航栏
 │   │   │   ├── MarkdownRenderer.tsx  # Wiki Markdown 渲染器
 │   │   │   ├── GraphView.tsx  # 知识图谱可视化
 │   │   │   ├── SearchBar.tsx  # 全局搜索
 │   │   │   └── FlashCard.tsx  # 闪卡组件
-│   │   └── lib/               # API 客户端、工具函数
+│   │   ├── api/               # API 客户端（封装所有后端调用）
+│   │   │   └── client.ts      # 统一请求封装
+│   │   └── lib/               # 工具函数（纯前端逻辑）
 │   └── tailwind.config.ts
 │
 └── scripts/
@@ -121,12 +136,17 @@ knowableplat/
 
 ---
 
-## 网页端页面设计
+## 网页端页面设计（SPA 单页应用）
+
+**架构：** 客户端是一个纯 SPA，只有 `index.html` 一个入口页面。所有路由切换、数据加载、状态管理都在浏览器端完成。所有业务逻辑和数据都通过 API 从服务端获取。
 
 ### 整体布局
-- **左侧：** 知识库选择器（顶部下拉）+ 固定侧边导航栏（Wiki、来源、学习、对话）
+- **左侧：** 知识库选择器（顶部下拉）+ 固定侧边导航栏（Wiki、来源、学习、对话、RSS、生成）
 - **顶部：** 搜索栏 + 当前知识库名称 + 用户头像
 - **主区域：** 根据当前路由显示内容，所有操作限定在当前选中的知识库范围内
+- **客户端路由：** 使用 React Router，路由切换不刷新页面
+
+### 页面列表
 
 ### 页面列表
 
@@ -542,17 +562,36 @@ docker compose up -d postgres redis
 # 运行数据库迁移
 alembic upgrade head
 
-# 启动后端
+# 启动后端（API + 静态文件托管）
 uvicorn app.main:app --reload --port 8000
 
-# 网页前端
+# 前端 SPA（开发模式，Vite 热更新）
 cd web
 npm install
-npm run dev                     # http://localhost:3000
+npm run dev                     # http://localhost:5173 → 代理 API 到 :8000
+
+# 生产构建（前端打包后由 FastAPI 托管）
+cd web && npm run build         # 输出到 web/dist/
+# FastAPI 配置 static_files 指向 web/dist/
 
 # 测试
 pytest --cov=app tests/
 ```
+
+### 客户端-服务端开发分工
+
+| 职责 | 服务端（FastAPI） | 客户端（React SPA） |
+|------|-------------------|---------------------|
+| 业务逻辑 | 全部（Ingest、Query、Generate、Learning） | 无 |
+| 数据库访问 | 全部 | 无，通过 API 获取 |
+| LLM 调用 | 全部 | 无 |
+| URL 抓取 | 全部 | 无 |
+| RSS 轮询 | 全部（后台定时任务） | 只展示状态 |
+| 用户认证 | 全部（JWT 签发/验证） | 存储 token、附到请求头 |
+| 数据过滤/排序 | 全部（API 参数控制） | 只渲染 API 返回的结果 |
+| UI 渲染 | 无 | 全部 |
+| 路由管理 | 无（SPA 返回 index.html） | React Router 客户端路由 |
+| 静态资源托管 | 生产环境托管 `web/dist/` | Vite 开发服务器 |
 
 ---
 
@@ -632,16 +671,19 @@ pytest --cov=app tests/
 - **测试：** pytest + pytest-asyncio，描述性名称：`test_ingest_url_creates_wiki_pages()`
 - **不允许 TODO 注释** — 要么实现，要么创建 GitHub issue
 
-### 前端（Next.js / React）
+### 前端（React SPA + Vite）
 
+- **框架：** React + Vite（纯 SPA，无 SSR，无 Server Components）
+- **路由：** React Router v7（客户端路由，所有路由切换不刷新页面）
 - **TypeScript 严格模式** — 禁止 `any` 类型
 - **格式化：** Prettier（printWidth 120, singleQuote, trailingComma all）
-- **Lint：** ESLint + Next.js 配置
+- **Lint：** ESLint + React 配置
 - **组件：** 函数组件 + hooks，PascalCase 文件名
-- **状态管理：** TanStack Query 管理服务端状态，Zustand 管理客户端状态
+- **状态管理：** TanStack Query 管理服务端状态（所有数据从 API 获取），Zustand 管理客户端 UI 状态
 - **样式：** Tailwind CSS — 使用工具类，避免自定义 CSS
-- **API 客户端：** 从 OpenAPI schema 通过 `openapi-typescript` 生成
+- **API 客户端：** 在 `src/api/client.ts` 中统一封装 `fetch` 调用，禁止在页面组件中直接 `fetch`
 - **响应式：** 移动端优先设计，断点：sm(640) / md(768) / lg(1024) / xl(1280)
+- **禁止在前端放置业务逻辑** — 前端只做 UI 渲染和 API 调用，所有计算、过滤、转换由后端完成
 
 ---
 
@@ -667,9 +709,9 @@ pytest --cov=app tests/
 
 - **禁止 `any` 类型** — 使用正确的 TypeScript 类型
 - **禁止内联样式** — 使用 Tailwind 工具类
-- **禁止直接 `fetch`** — 使用 OpenAPI schema 生成的 API 客户端
+- **禁止页面组件中直接 `fetch`** — 统一通过 `src/api/client.ts` 封装调用
+- **禁止前端业务逻辑** — 过滤、排序、计算、数据转换全部由后端 API 完成
 - **组件不超过 200 行** — 拆分为更小的组件
-- **默认使用 Server Components** — 只在需要时添加 `"use client"`
 
 ### Wiki 内容
 
@@ -764,7 +806,8 @@ pytest --cov=app tests/
 - [Jina Reader API](https://jina.ai/reader/) — 备选 URL 转 Markdown
 - [SM-2 间隔重复算法](https://super-memory.com/english/ol/sm2.htm)
 - [FastAPI 文档](https://fastapi.tiangolo.com/)
-- [Next.js App Router](https://nextjs.org/docs/app)
+- [React Router](https://reactrouter.com/) — SPA 客户端路由
+- [Vite](https://vitejs.dev/) — 前端构建工具
 - [Tailwind CSS](https://tailwindcss.com/)
 - [feedparser](https://feedparser.readthedocs.io/) — RSS/Atom 解析库
 - [APScheduler](https://apscheduler.readthedocs.io/) — Python 定时任务调度
