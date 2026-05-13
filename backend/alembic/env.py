@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.config import settings
 from app.models.base import Base
 from app.models.entity import Entity  # noqa: F401
+from app.models.generated_doc import GeneratedDoc  # noqa: F401
 from app.models.knowledge_base import KnowledgeBase  # noqa: F401
 from app.models.log import ActivityLog  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
