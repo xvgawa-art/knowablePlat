@@ -31,12 +31,15 @@ async def _get_kb(kb_slug: str, db: AsyncSession) -> KnowledgeBase:
 async def list_wiki_pages(
     kb_slug: str,
     page_type: str | None = None,
+    search: str | None = None,
     offset: int = 0,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
     kb = await _get_kb(kb_slug, db)
     wiki_repo = WikiPageRepository(db)
+    if search and search.strip():
+        return await wiki_repo.search(kb.id, search.strip(), offset=offset, limit=limit)
     ptype = WikiPageType(page_type) if page_type else None
     pages = await wiki_repo.list_by_kb(kb.id, page_type=ptype, offset=offset, limit=limit)
     return pages

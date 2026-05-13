@@ -101,3 +101,54 @@ async def test_delete_wiki_page(client: AsyncClient, kb_with_wiki: str) -> None:
 async def test_wiki_kb_not_found(client: AsyncClient) -> None:
     resp = await client.get("/api/kb/nonexistent/wiki")
     assert resp.status_code == 404
+
+
+async def test_search_wiki_pages(client: AsyncClient, kb_slug: str) -> None:
+    from app.database import async_sessionmaker
+    from app.repositories.wiki_page import WikiPageRepository
+
+    async with async_sessionmaker() as session:
+        async with session.begin():
+            from app.repositories.knowledge_base import KnowledgeBaseRepository
+
+            kb_repo = KnowledgeBaseRepository(session)
+            kb = await kb_repo.get_by_slug(kb_slug)
+            assert kb is not None
+
+            wiki_repo = WikiPageRepository(session)
+            await wiki_repo.create(
+                kb_id=kb.id,
+                slug="xss-attack",
+                title="XSS 攻击防护指南",
+                page_type="concept",
+                content="跨站脚本攻击（XSS）是一种 Web 安全漏洞",
+                source_ids=[],
+                outgoing_links=[],
+                incoming_links=[],
+            )
+            await wiki_repo.create(
+                kb_id=kb.id,
+                slug="csrf-defense",
+                title="CSRF 防御策略",
+                page_type="concept",
+                content="跨站请求伪造（CSRF）的防御方法",
+                source_ids=[],
+                outgoing_links=[],
+                incoming_links=[],
+            )
+
+    resp = await client.get(f"/api/kb/{kb_slug}/wiki", params={"search": "XSS"})
+    assert resp.status_code == 200
+    pages = resp.json()
+    assert len(pages) == 1
+    assert pages[0]["slug"] == "xss-attack"
+
+    resp2 = await client.get(f"/api/kb/{kb_slug}/wiki", params={"search": "CSRF"})
+    assert resp2.status_code == 200
+    pages2 = resp2.json()
+    assert len(pages2) == 1
+    assert pages2[0]["slug"] == "csrf-defense"
+
+    resp3 = await client.get(f"/api/kb/{kb_slug}/wiki", params={"search": "不存在的关键词"})
+    assert resp3.status_code == 200
+    assert resp3.json() == []

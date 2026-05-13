@@ -1,6 +1,7 @@
 import enum
 
 from sqlalchemy import JSON, Enum, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
@@ -27,3 +28,4 @@ class WikiPage(BaseModel):
     source_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     outgoing_links: Mapped[list | None] = mapped_column(JSON, default=list, nullable=True)
     incoming_links: Mapped[list | None] = mapped_column(JSON, default=list, nullable=True)
+    search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
