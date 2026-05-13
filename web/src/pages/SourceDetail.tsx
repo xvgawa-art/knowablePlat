@@ -1,5 +1,6 @@
 import { useParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { api } from "../api/client";
 import type { SourceDetail as SourceDetailType } from "../types";
 
@@ -12,10 +13,21 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function SourceDetail() {
   const { kbSlug, sourceId } = useParams();
+  const queryClient = useQueryClient();
+  const [retrying, setRetrying] = useState(false);
+
   const { data: source, isLoading, error } = useQuery<SourceDetailType>({
     queryKey: ["source", kbSlug, sourceId],
     queryFn: () => api.get(`/kb/${kbSlug}/sources/${sourceId}`),
     enabled: !!kbSlug && !!sourceId,
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: () => api.post(`/kb/${kbSlug}/sources/${sourceId}/retry`, {}),
+    onSettled: () => {
+      setRetrying(false);
+      queryClient.invalidateQueries({ queryKey: ["source", kbSlug, sourceId] });
+    },
   });
 
   if (isLoading) return <div className="p-8 text-gray-500">加载中...</div>;
@@ -29,7 +41,7 @@ export default function SourceDetail() {
         {source.title ?? "未命名来源"}
       </h1>
 
-      <div className="flex gap-4 text-sm text-gray-500 mb-6">
+      <div className="flex items-center gap-4 text-sm text-gray-500 mb-6">
         <span className={`px-2 py-1 rounded-full ${statusInfo.color}`}>{statusInfo.label}</span>
         <a
           href={source.url}
@@ -39,6 +51,15 @@ export default function SourceDetail() {
         >
           {source.url}
         </a>
+        {source.status === "failed" && (
+          <button
+            onClick={() => { setRetrying(true); retryMutation.mutate(); }}
+            disabled={retrying}
+            className="px-3 py-1 text-sm rounded bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50"
+          >
+            {retrying ? "重试中..." : "重试摄入"}
+          </button>
+        )}
       </div>
 
       {source.raw_content && (

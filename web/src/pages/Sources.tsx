@@ -1,5 +1,6 @@
 import { useParams, Link } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { api } from "../api/client";
 import type { Source } from "../types";
 
@@ -12,11 +13,29 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function Sources() {
   const { kbSlug } = useParams();
+  const queryClient = useQueryClient();
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
   const { data: sources = [], isLoading } = useQuery<Source[]>({
     queryKey: ["sources", kbSlug],
     queryFn: () => api.get(`/kb/${kbSlug}/sources`),
     enabled: !!kbSlug,
   });
+
+  const retryMutation = useMutation({
+    mutationFn: (sourceId: string) => api.post(`/kb/${kbSlug}/sources/${sourceId}/retry`, {}),
+    onSettled: () => {
+      setRetryingId(null);
+      queryClient.invalidateQueries({ queryKey: ["sources", kbSlug] });
+    },
+  });
+
+  const handleRetry = (e: React.MouseEvent, sourceId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRetryingId(sourceId);
+    retryMutation.mutate(sourceId);
+  };
 
   return (
     <div className="p-8">
@@ -48,9 +67,20 @@ export default function Sources() {
                   <h3 className="font-semibold text-gray-900">
                     {source.title ?? source.url}
                   </h3>
-                  <span className={`text-xs px-2 py-1 rounded-full ${statusInfo.color}`}>
-                    {statusInfo.label}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {source.status === "failed" && (
+                      <button
+                        onClick={(e) => handleRetry(e, source.id)}
+                        disabled={retryingId === source.id}
+                        className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50"
+                      >
+                        {retryingId === source.id ? "重试中..." : "重试"}
+                      </button>
+                    )}
+                    <span className={`text-xs px-2 py-1 rounded-full ${statusInfo.color}`}>
+                      {statusInfo.label}
+                    </span>
+                  </div>
                 </div>
                 <p className="text-sm text-gray-500 mt-1 truncate">{source.url}</p>
               </Link>
