@@ -31,7 +31,7 @@ async def create_feed(kb_slug: str, data: RssFeedCreate, db: AsyncSession = Depe
     kb = await _get_kb(kb_slug, db)
     repo = RssFeedRepository(db)
     return await repo.create(
-        kb_id=kb.id,
+        kb_id=str(kb.id),
         name=data.name,
         url=data.url,
         feed_type=data.feed_type,
