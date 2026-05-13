@@ -77,6 +77,9 @@
 ### DELETE /api/kb/{kb_slug}/sources/{id}
 删除来源。
 
+### POST /api/kb/{kb_slug}/sources/{id}/retry
+重试失败的来源。只有 `status=failed` 的来源可以重试。
+
 ## Wiki 操作
 
 ### GET /api/kb/{kb_slug}/wiki
@@ -84,6 +87,11 @@
 
 ### GET /api/kb/{kb_slug}/wiki/{slug}
 获取 wiki 页面内容。
+
+### PUT /api/kb/{kb_slug}/wiki/{slug}
+更新 wiki 页面内容（同步更新磁盘文件和搜索向量）。
+
+**请求体**: `{ "content": "新的 Markdown 内容", "title": "新标题（可选）", "outgoing_links": ["slug1"] }`
 
 ### GET /api/kb/{kb_slug}/wiki/graph
 获取页面关系图谱数据。
