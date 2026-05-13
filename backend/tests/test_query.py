@@ -97,3 +97,46 @@ async def test_answer_question_uses_index_as_fallback_context() -> None:
         answer, referenced = await answer_question(kb_id, "test-kb", "测试", index_content, mock_session)
         assert answer == "通用回答"
         assert referenced == []
+
+
+async def test_answer_question_tool_arsenal_uses_recommend_prompt() -> None:
+    from app.services.query import answer_question
+
+    kb_id = uuid.uuid4()
+    index_content = "# 工具装备库目录\n\n- [[nmap|Nmap]]\n- [[burpsuite|Burp Suite]]"
+
+    page = WikiPage(
+        slug="nmap",
+        title="Nmap",
+        page_type=WikiPageType.tool,
+        kb_id=kb_id,
+        content="# Nmap\n\nNmap 是一款网络扫描工具。",
+    )
+
+    mock_session = MagicMock()
+    call_count = 0
+    captured_system = ""
+
+    async def mock_generate(prompt, system=""):
+        nonlocal call_count, captured_system
+        call_count += 1
+        if call_count == 1:
+            return "nmap"
+        captured_system = system
+        return "推荐使用 [[nmap]] 进行端口扫描。详见 [[nmap]]"
+
+    with (
+        patch("app.services.query.generate", side_effect=mock_generate),
+        patch("app.services.query.WikiPageRepository") as mock_repo_cls,
+    ):
+        mock_repo = AsyncMock()
+        mock_repo.get_by_slug.return_value = page
+        mock_repo_cls.return_value = mock_repo
+
+        answer, referenced = await answer_question(
+            kb_id, "tool-arsenal", "端口扫描用什么工具", index_content, mock_session
+        )
+        assert "nmap" in answer
+        assert "nmap" in referenced
+        # Should use the tool recommendation system prompt
+        assert "工具推荐" in captured_system or "推荐专家" in captured_system
