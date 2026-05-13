@@ -26,6 +26,8 @@ class Settings(BaseSettings):
 
     # URL 抓取
     jina_reader_url: str = "https://r.jina.ai/"
+    firecrawl_api_url: str = ""
+    firecrawl_api_key: str = ""
 
     # 应用
     app_host: str = "0.0.0.0"
