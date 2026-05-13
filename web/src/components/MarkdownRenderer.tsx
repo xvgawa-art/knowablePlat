@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -7,15 +8,24 @@ interface MarkdownRendererProps {
 }
 
 export default function MarkdownRenderer({ content, kbSlug }: MarkdownRendererProps) {
+  const navigate = useNavigate();
+
   return (
     <div className="prose prose-gray max-w-none">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           a({ href, children }) {
-            if (href?.startsWith("[[") || href?.startsWith("/")) {
+            if (href?.startsWith("/")) {
               return (
-                <a href={href} className="text-blue-600 hover:underline">
+                <a
+                  href={href}
+                  className="text-blue-600 hover:underline cursor-pointer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigate(href);
+                  }}
+                >
                   {children}
                 </a>
               );

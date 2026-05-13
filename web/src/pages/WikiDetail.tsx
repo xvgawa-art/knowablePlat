@@ -1,4 +1,4 @@
-import { useParams } from "react-router";
+import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
@@ -85,13 +85,13 @@ export default function WikiDetail() {
               <h2 className="text-lg font-semibold mb-2">相关页面</h2>
               <div className="flex flex-wrap gap-2">
                 {page.outgoing_links.map((link) => (
-                  <a
+                  <Link
                     key={link}
-                    href={`/kb/${kbSlug}/wiki/${link}`}
+                    to={`/kb/${kbSlug}/wiki/${link}`}
                     className="px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100"
                   >
                     {link}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
