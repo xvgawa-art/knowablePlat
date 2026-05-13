@@ -27,16 +27,22 @@ async def _get_kb(kb_slug: str, db: AsyncSession) -> KnowledgeBase:
 
 
 async def _ingest_source(source_id: uuid.UUID, kb_slug: str) -> None:
-    """Background task: fetch URL content, then run full ingest pipeline."""
+    """Background task: fetch URL content, then run appropriate ingest pipeline."""
     from app.database import async_sessionmaker
+    from app.models.knowledge_base import KbType
     from app.services.ingest import run_ingest_pipeline
+    from app.services.tool_arsenal import run_tool_arsenal_pipeline
 
     # Phase 1: Fetch raw content
     async with async_sessionmaker() as session:
         async with session.begin():
             repo = SourceRepository(session)
+            kb_repo = KnowledgeBaseRepository(session)
             source = await repo.get_by_id(source_id)
             if source is None:
+                return
+            kb = await kb_repo.get_by_slug(kb_slug)
+            if kb is None:
                 return
             try:
                 content = await fetch_url(source.url)
@@ -45,9 +51,12 @@ async def _ingest_source(source_id: uuid.UUID, kb_slug: str) -> None:
             except Exception:
                 source.status = SourceStatus.failed
 
-    # Phase 2: Run ingest pipeline (extract, synthesize, cross-ref, index, log)
-    if source and source.raw_content:
-        await run_ingest_pipeline(source_id, kb_slug)
+    # Phase 2: Dispatch to appropriate ingest pipeline
+    if source and source.raw_content and kb:
+        if kb.kb_type == KbType.tool_arsenal:
+            await run_tool_arsenal_pipeline(source_id, kb_slug)
+        else:
+            await run_ingest_pipeline(source_id, kb_slug)
 
 
 @router.post("", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
