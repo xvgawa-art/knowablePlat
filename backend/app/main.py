@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
 from app.api.knowledge_bases import router as kb_router
+from app.api.sources import router as sources_router
 from app.config import ensure_dirs
 from app.database import async_sessionmaker
 
@@ -28,6 +29,7 @@ app = FastAPI(title="KnowablePlat", version="0.1.0", lifespan=lifespan)
 
 app.include_router(auth_router)
 app.include_router(kb_router)
+app.include_router(sources_router)
 
 
 @app.get("/api/health")
