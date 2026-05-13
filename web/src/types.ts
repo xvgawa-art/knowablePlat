@@ -49,6 +49,7 @@ export interface WikiPageListItem {
 export interface Notification {
   id: string;
   kb_id: string;
+  kb_slug: string | null;
   source_id: string;
   trigger_type: string;
   title: string;

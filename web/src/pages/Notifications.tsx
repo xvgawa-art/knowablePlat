@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router";
 import { api } from "../api/client";
 import type { NotificationList } from "../types";
 
@@ -9,7 +10,7 @@ export default function Notifications() {
 
   const { data, isLoading } = useQuery<NotificationList>({
     queryKey: ["notifications", showUnread],
-    queryFn: () => api.get(`/notifications${showUnread ? "?unread=true" : ""}`),
+    queryFn: () => api.get("/notifications", showUnread ? { unread: "true" } : undefined),
   });
 
   const markReadMutation = useMutation({
@@ -47,7 +48,7 @@ export default function Notifications() {
           <button
             onClick={() => markAllReadMutation.mutate()}
             disabled={markAllReadMutation.isPending}
-            className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+            className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
           >
             全部已读
           </button>
@@ -73,26 +74,38 @@ export default function Notifications() {
                   {notif.summary && (
                     <p className="mt-2 text-sm text-gray-600">{notif.summary}</p>
                   )}
-                  {notif.related_points && Array.isArray(notif.related_points) && notif.related_points.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      <p className="text-xs font-medium text-gray-500">关联知识点：</p>
-                      {notif.related_points.map((point, i) => {
-                        if (typeof point === "object" && point !== null && "wiki_page_slug" in point) {
-                          const p = point as { wiki_page_slug?: string; title?: string; relation_desc?: string };
-                          return (
-                            <a
-                              key={i}
-                              href={`/kb/tool-arsenal/wiki/${p.wiki_page_slug}`}
-                              className="block text-sm text-blue-600 hover:underline"
-                            >
-                              {p.title ?? p.wiki_page_slug} — {p.relation_desc}
-                            </a>
-                          );
-                        }
-                        return null;
-                      })}
-                    </div>
-                  )}
+                  {notif.related_points &&
+                    Array.isArray(notif.related_points) &&
+                    notif.related_points.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-xs font-medium text-gray-500">关联知识点：</p>
+                        {notif.related_points.map((point, i) => {
+                          if (typeof point === "object" && point !== null && "wiki_page_slug" in point) {
+                            const p = point as {
+                              wiki_page_slug?: string;
+                              title?: string;
+                              relation_desc?: string;
+                            };
+                            const kbSlug = notif.kb_slug;
+                            return kbSlug && p.wiki_page_slug ? (
+                              <Link
+                                key={i}
+                                to={`/kb/${kbSlug}/wiki/${p.wiki_page_slug}`}
+                                className="block text-sm text-blue-600 hover:underline"
+                              >
+                                {p.title ?? p.wiki_page_slug}
+                                {p.relation_desc ? ` — ${p.relation_desc}` : ""}
+                              </Link>
+                            ) : (
+                              <p key={i} className="text-sm text-gray-500">
+                                {p.title ?? "未知页面"}
+                              </p>
+                            );
+                          }
+                          return null;
+                        })}
+                      </div>
+                    )}
                   <p className="mt-2 text-xs text-gray-400">
                     {new Date(notif.created_at).toLocaleString("zh-CN")}
                   </p>
@@ -100,7 +113,8 @@ export default function Notifications() {
                 {!notif.is_read && (
                   <button
                     onClick={() => markReadMutation.mutate(notif.id)}
-                    className="ml-4 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+                    disabled={markReadMutation.isPending}
+                    className="ml-4 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 disabled:opacity-50"
                   >
                     标记已读
                   </button>

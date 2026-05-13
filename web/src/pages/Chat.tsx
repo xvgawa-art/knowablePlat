@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, Link } from "react-router";
 import { api } from "../api/client";
 import MarkdownRenderer from "../components/MarkdownRenderer";
@@ -15,6 +15,11 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,7 +32,10 @@ export default function Chat() {
 
     try {
       const data = await api.post<QueryResponse>(`/kb/${kbSlug}/wiki/query`, { question: q });
-      setMessages((prev) => [...prev, { question: q, answer: data.answer, referenced_pages: data.referenced_pages }]);
+      setMessages((prev) => [
+        ...prev,
+        { question: q, answer: data.answer, referenced_pages: data.referenced_pages },
+      ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "查询失败");
       setMessages((prev) => [...prev, { question: q, answer: "", referenced_pages: [] }]);
@@ -44,7 +52,7 @@ export default function Chat() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {messages.length === 0 && (
+        {messages.length === 0 && !loading && (
           <div className="text-center text-gray-400 mt-20">
             <p className="text-4xl mb-4">💬</p>
             <p>输入问题，基于当前知识库的 Wiki 知识进行问答</p>
@@ -66,7 +74,7 @@ export default function Chat() {
                     <MarkdownRenderer content={msg.answer} kbSlug={kbSlug} />
                   </div>
                 ) : (
-                  <p className="text-sm text-red-500">查询失败</p>
+                  <p className="text-sm text-red-500">查询失败，请重试</p>
                 )}
 
                 {msg.referenced_pages.length > 0 && (
@@ -93,13 +101,29 @@ export default function Chat() {
         {loading && (
           <div className="flex justify-start">
             <div className="px-4 py-3 bg-gray-100 rounded-2xl rounded-bl-sm">
-              <p className="text-sm text-gray-500">思考中...</p>
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+                <span className="text-sm text-gray-500">思考中...</span>
+              </div>
             </div>
           </div>
         )}
+
+        <div ref={messagesEndRef} />
       </div>
 
-      {error && <div className="px-6 py-2 text-sm text-red-600 bg-red-50">{error}</div>}
+      {error && (
+        <div className="px-6 py-2 text-sm text-red-600 bg-red-50 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+            关闭
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200 bg-white">
         <div className="flex gap-3">
@@ -116,7 +140,7 @@ export default function Chat() {
             disabled={loading || !question.trim() || !kbSlug}
             className="px-6 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            发送
+            {loading ? "查询中..." : "发送"}
           </button>
         </div>
       </form>

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class NotificationResponse(BaseModel):
     id: uuid.UUID
     kb_id: uuid.UUID
+    kb_slug: str | None = None
     source_id: uuid.UUID
     trigger_type: str
     title: str
