@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-一个全栈知识管理平台，灵感来自 Karpathy 的 LLM-Wiki 模式。用户提交在线文章链接，系统抓取并存储，然后使用 LLM 增量构建和维护一个结构化、互相链接的 wiki。通过网页端进行浏览、查询和学习。
+一个全栈知识管理平台，灵感来自 Karpathy 的 LLM-Wiki 模式。用户提交在线文章链接，系统抓取并存储，然后使用 LLM 增量构建和维护一个结构化、互相链接的 wiki。通过网页端进行浏览和查询。
 
 **核心理念：** 不同于 RAG（每次查询都从原始文档检索），LLM 增量构建并维护一个**持久的 wiki** —— 一个结构化、互相链接的 Markdown 文件集合。知识只编译一次并持续更新，而非每次查询重新推导。每添加一个新来源、每提一个问题，wiki 都会变得更丰富。
 
@@ -19,7 +19,7 @@
 - **部署方式** — 生产环境中 FastAPI 同时托管 API 和前端静态文件（`/api/*` 走 API，其余走 SPA）。开发时前后端独立运行。
 
 **多层架构（Karpathy LLM-Wiki 模式 + 知识库分类）：**
-1. **Knowledge Bases（知识库层）** — 用户创建的独立知识库（如「Web 安全」「鸿蒙安全」「AI 安全」），每个知识库拥有独立的 wiki 空间、来源集合和学习队列。知识库之间互不干扰。
+1. **Knowledge Bases（知识库层）** — 用户创建的独立知识库（如「Web 安全」「鸿蒙安全」「AI 安全」），每个知识库拥有独立的 wiki 空间和来源集合。知识库之间互不干扰。
 2. **Raw Sources（原始来源层）** — 不可变的源文档（抓取的文章、PDF、用户笔记）。归属于某个知识库。LLM 只读不写。
 3. **The Wiki（Wiki 层）** — 每个知识库下独立的 LLM 生成 Markdown：摘要页、实体页、概念页、对比页、交叉引用。LLM 完全拥有这一层。
 4. **The Schema（Schema 层）** — 本 CLAUDE.md + 配置文件，告诉 LLM wiki 的结构、约定和操作流程。
@@ -42,7 +42,7 @@ knowableplat/
 │   ├── api.md                 # API 接口文档
 │   ├── ingest-pipeline.md     # Ingest 流水线文档
 │   ├── query-pipeline.md      # Query 查询流水线文档
-│   ├── learning-system.md     # 学习系统文档
+│   ├── notification.md        # 知识新增通知文档
 │   └── deployment.md          # 部署运维文档
 │
 ├── backend/
@@ -55,6 +55,7 @@ knowableplat/
 │   │   │   ├── rss_feed.py    # RSS 订阅源
 │   │   │   ├── wiki_page.py   # Wiki 页面
 │   │   │   ├── entity.py      # 实体（人物、概念、组织）
+│   │   │   ├── notification.py # 知识新增通知
 │   │   │   └── log.py         # 操作日志
 │   │   ├── api/               # REST API 路由
 │   │   │   ├── knowledge_bases.py  # 知识库 CRUD
@@ -62,7 +63,7 @@ knowableplat/
 │   │   │   ├── rss.py         # RSS 订阅源 CRUD + 手动触发抓取
 │   │   │   ├── wiki.py        # Wiki 浏览/搜索/查询
 │   │   │   ├── generate.py    # 跨知识库文档生成
-│   │   │   ├── learn.py       # 学习 & 测验
+│   │   │   ├── notifications.py # 知识新增通知
 │   │   │   └── auth.py        # 用户认证
 │   │   ├── services/          # 业务逻辑
 │   │   │   ├── fetcher.py     # URL → 干净 Markdown (Firecrawl/Jina)
@@ -71,8 +72,8 @@ knowableplat/
 │   │   │   ├── wiki_engine.py # Wiki 维护（交叉引用、lint、更新）
 │   │   │   ├── query.py       # 问题 → 带引用的回答
 │   │   │   ├── generate.py    # 跨知识库文档生成
-│   │   │   ├── llm.py         # LLM 抽象层 (Anthropic/OpenAI)
-│   │   │   └── learning.py    # 间隔重复 & 测题生成
+│   │   │   ├── notification.py # 知识新增通知生成
+│   │   │   └── llm.py         # LLM 抽象层 (Anthropic/OpenAI)
 │   │   ├── prompts/           # LLM 提示词模板
 │   │   │   ├── ingest_extract.md      # 提取实体、概念、论点
 │   │   │   ├── ingest_synthesize.md   # 生成 wiki 页面内容
@@ -83,8 +84,7 @@ knowableplat/
 │   │   │   ├── generate_section.md     # 分章节生成内容
 │   │   │   ├── generate_integrate.md   # 整合生成完整文档
 │   │   │   ├── lint_contradictions.md # 检测页面间矛盾
-│   │   │   ├── learn_quiz.md          # 从 wiki 内容生成测验题
-│   │   │   └── learn_flashcard.md     # 生成闪卡
+│   │   │   └── ingest_notify.md       # 生成知识新增通知
 │   │   ├── wiki/              # Wiki 层（按知识库隔离）
 │   │   │   └── {kb_slug}/     # 每个知识库独立的 wiki 空间
 │   │   │       ├── index.md   # 该知识库的内容目录
@@ -114,7 +114,7 @@ knowableplat/
 │   │   │   ├── WikiDetail.tsx      # Wiki 页面详情
 │   │   │   ├── Sources.tsx         # 来源管理
 │   │   │   ├── RssManager.tsx      # RSS 订阅管理
-│   │   │   ├── Learn.tsx           # 学习 & 复习
+│   │   │   ├── Notifications.tsx   # 知识新增通知
 │   │   │   ├── Chat.tsx            # 对话查询
 │   │   │   ├── Generate.tsx        # 知识生成
 │   │   │   └── GenerateHistory.tsx # 生成历史
@@ -123,7 +123,7 @@ knowableplat/
 │   │   │   ├── MarkdownRenderer.tsx  # Wiki Markdown 渲染器
 │   │   │   ├── GraphView.tsx  # 知识图谱可视化
 │   │   │   ├── SearchBar.tsx  # 全局搜索
-│   │   │   └── FlashCard.tsx  # 闪卡组件
+│   │   │   └── NotificationBadge.tsx # 通知角标组件
 │   │   ├── api/               # API 客户端（封装所有后端调用）
 │   │   │   └── client.ts      # 统一请求封装
 │   │   └── lib/               # 工具函数（纯前端逻辑）
@@ -141,19 +141,17 @@ knowableplat/
 **架构：** 客户端是一个纯 SPA，只有 `index.html` 一个入口页面。所有路由切换、数据加载、状态管理都在浏览器端完成。所有业务逻辑和数据都通过 API 从服务端获取。
 
 ### 整体布局
-- **左侧：** 知识库选择器（顶部下拉）+ 固定侧边导航栏（Wiki、来源、学习、对话、RSS、生成）
-- **顶部：** 搜索栏 + 当前知识库名称 + 用户头像
+- **左侧：** 知识库选择器（顶部下拉）+ 固定侧边导航栏（Wiki、来源、对话、RSS、生成）
+- **顶部：** 搜索栏 + 当前知识库名称 + 通知图标（角标显示未读数）+ 用户头像
 - **主区域：** 根据当前路由显示内容，所有操作限定在当前选中的知识库范围内
 - **客户端路由：** 使用 React Router，路由切换不刷新页面
-
-### 页面列表
 
 ### 页面列表
 
 | 页面 | 路由 | 功能 |
 |------|------|------|
 | 仪表盘 | `/` | 全局概览（知识库列表、各库统计、最近活动） |
-| 知识库详情 | `/kb/{kb_slug}` | 单个知识库的仪表盘（来源数、wiki 页数、待复习数） |
+| 知识库详情 | `/kb/{kb_slug}` | 单个知识库的仪表盘（来源数、wiki 页数） |
 | 知识库管理 | `/kb` | 创建/编辑/删除知识库，列表展示 |
 | Wiki 浏览 | `/kb/{kb_slug}/wiki` | 当前知识库的 wiki 页面列表，按类型/标签筛选，图谱视图切换 |
 | Wiki 详情 | `/kb/{kb_slug}/wiki/[slug]` | 单个 wiki 页面内容、反向链接、相关页面 |
@@ -162,9 +160,8 @@ knowableplat/
 | 来源详情 | `/kb/{kb_slug}/sources/[id]` | 原始内容 + 生成的 wiki 页面列表 |
 | RSS 管理 | `/kb/{kb_slug}/rss` | 当前知识库的 RSS 订阅源列表、添加/编辑/删除订阅 |
 | RSS 详情 | `/kb/{kb_slug}/rss/[id]` | 单个订阅源详情、抓取历史、已归档文章列表 |
-| 学习首页 | `/kb/{kb_slug}/learn` | 当前知识库的待复习、学习统计、连续打卡 |
-| 闪卡复习 | `/kb/{kb_slug}/learn/review` | 滑动式闪卡，SM-2 评分 |
-| 测验 | `/kb/{kb_slug}/learn/quiz/[slug]` | LLM 生成的测验题 |
+| 通知中心 | `/notifications` | 全部知识新增通知列表（未读/已读、筛选、分页） |
+| 通知详情 | `/notifications/{id}` | 单条通知详情：文档知识总结 + 关联知识点链接 |
 | 对话查询 | `/kb/{kb_slug}/chat` | 在当前知识库上下文中问答，带 wiki 引用的回答 |
 | 图谱视图 | `/kb/{kb_slug}/wiki/graph` | 当前知识库的 wiki 页面关系力导向图 |
 | 知识生成 | `/generate` | 跨知识库文档生成（多选知识库、输入主题、生成结构化文档） |
@@ -193,6 +190,7 @@ knowableplat/
 8. **更新索引** — 刷新 `wiki/{kb_slug}/index.md` 加入新条目
 9. **追加日志** — 向 `wiki/{kb_slug}/log.md` 添加条目：`## [YYYY-MM-DD] ingest | 文章标题`
 10. **标记矛盾** — 如果新来源与同一知识库内已有论点矛盾，创建 `wiki/{kb_slug}/comparisons/` 对比页
+11. **生成知识新增通知** — LLM 生成一份通知，包含：(1) 当前文档的知识内容总结；(2) 与原知识库相关的知识点，附带可跳转的链接（指向对应 wiki 页面）。通知保存到 `notifications` 表，推送至网页端通知中心。
 
 一个来源可能涉及 10-15 个 wiki 页面。LLM 完成所有交叉引用和维护工作。
 
@@ -405,17 +403,18 @@ tags: [标签1, 标签2]
 | details | JSON | 操作元数据 |
 | created_at | datetime | 创建时间 |
 
-### learning（学习表）
+### notifications（知识新增通知表）
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID, PK | 主键 |
-| user_id | UUID, FK | 用户 ID |
-| wiki_page_id | UUID, FK | 关联 wiki 页面 |
-| interval | integer | 距下次复习的天数 |
-| ease_factor | float | SM-2 算法参数 |
-| repetitions | integer | 重复次数 |
-| next_review | date | 下次复习日期 |
-| last_reviewed | date | 上次复习日期 |
+| kb_id | UUID, FK | 所属知识库 |
+| source_id | UUID, FK | 触发通知的来源文档 |
+| trigger_type | enum | manual（手动提交 URL）/ rss（RSS 推送） |
+| title | string | 通知标题（如「新知识入库：文章标题」） |
+| summary | text | LLM 生成的当前文档知识内容总结 |
+| related_points | JSON | 关联知识点列表，每项包含：`{kb_slug, wiki_page_slug, title, relation_desc}` |
+| is_read | boolean | 是否已读（默认 false） |
+| created_at | datetime | 创建时间 |
 
 ### generated_docs（生成文档表）
 | 字段 | 类型 | 说明 |
@@ -465,11 +464,12 @@ tags: [标签1, 标签2]
 - `POST /api/kb/{kb_slug}/wiki/query` — 在该知识库上下文中提问
 - `POST /api/kb/{kb_slug}/wiki/lint` — 触发该知识库的 wiki 健康检查
 
-### 学习系统（知识库范围内）
-- `GET /api/kb/{kb_slug}/learn/due` — 获取该知识库今日待复习页面
-- `POST /api/kb/{kb_slug}/learn/review` — 提交复习结果（更新 SM-2 调度）
-- `GET /api/kb/{kb_slug}/learn/quiz/{slug}` — 为该知识库的 wiki 页面生成测验题
-- `GET /api/kb/{kb_slug}/learn/stats` — 该知识库的学习统计
+### 知识新增通知
+- `GET /api/notifications` — 获取通知列表（支持 `?unread=true` 过滤未读、`?kb_id=` 按知识库过滤，分页）
+- `GET /api/notifications/unread-count` — 获取未读通知数量
+- `GET /api/notifications/{id}` — 获取通知详情（完整总结 + 关联知识点）
+- `PUT /api/notifications/{id}/read` — 标记通知为已读
+- `PUT /api/notifications/read-all` — 全部标记为已读（可选 `?kb_id=` 按知识库）
 
 ### 知识生成（跨知识库）
 - `POST /api/generate` — 提交生成请求（参数：`kb_ids[]` 知识库列表、`topic` 主题要求，异步任务）
@@ -519,31 +519,58 @@ class LLMProvider(Protocol):
 
 ---
 
-## 学习系统（网页端）
+## 知识新增通知系统
 
-### 间隔重复（SM-2 算法）
+### 核心理念
 
-在 `backend/app/services/learning.py` 中实现：
-1. 用户阅读 wiki 页面 → 页面进入复习队列
-2. 从页面内容生成测验（多选 + 简答）
-3. 用户作答 → 质量评分（0-5）
-4. SM-2 计算下次复习日期、难度因子、重复次数
-5. `GET /api/learn/due` 返回待复习页面
+每当知识库有新知识入库（用户手动提交 URL 或 RSS 推送新文章），系统自动生成一份**知识新增通知**。通知包含两部分：
 
-### 测验生成
+1. **当前文档知识总结** — LLM 对新入库文档的核心内容进行精炼总结，让用户快速了解这篇文章讲了什么。
+2. **关联知识点 + 跳转链接** — LLM 分析新内容与知识库中已有 wiki 页面的关联，列出相关知识点，每个点附带可点击的链接（指向对应知识库的 wiki 页面），用户可直接跳转深入学习。
 
-LLM 从 wiki 页面生成题目：
-- **多选题** — 概念理解
-- **填空题** — 关键事实和定义
-- **判断题** — 论点验证
-- **简答题** — 综合分析
+### 触发时机
 
-### 网页端学习流程
+- **手动提交 URL** — Ingest 流水线完成（wiki 页面生成、交叉引用更新）后，自动生成通知。
+- **RSS 推送** — RSS 条目走完 Ingest 流水线后，自动生成通知。
 
-1. 进入学习页面 → 查看待复习数量和连续打卡
-2. 滑动闪卡式复习（左右滑动，上滑"记住了"，下拉"再看看"）
-3. 回答测验题（即时反馈 + 正确答案解释）
-4. 学习统计图表（复习量趋势、掌握率、连续打卡）
+### 通知生成流程
+
+在 `backend/app/services/notification.py` 中实现：
+
+1. **接收触发** — Ingest 流水线完成后调用通知服务
+2. **收集上下文** — 读取新来源的 wiki 摘要页 + 本次 Ingest 新建/更新的所有 wiki 页面
+3. **LLM 生成总结** — 使用 `prompts/ingest_notify.md` 提示词，让 LLM：
+   - 提炼文档核心知识（3-5 句话）
+   - 识别与已有 wiki 页面的关联（最多 5 个关联点）
+   - 每个关联点附带：wiki 页面标题、slug、关联描述
+4. **保存通知** — 写入 `notifications` 表，`is_read = false`
+5. **推送至前端** — 前端通过轮询 `GET /api/notifications/unread-count` 显示角标
+
+### 通知内容格式
+
+```json
+{
+  "title": "新知识入库：XXX文章标题",
+  "summary": "本文主要讲述了...(3-5句核心总结)",
+  "related_points": [
+    {
+      "kb_slug": "web-security",
+      "wiki_page_slug": "xss-attack",
+      "title": "XSS 攻击防护",
+      "relation_desc": "本文提到的新型 XSS 变种与已有知识互补"
+    }
+  ]
+}
+```
+
+### 网页端通知流程
+
+1. **角标提醒** — 顶栏通知图标显示未读数量（红色角标）
+2. **点击图标** — 打开通知列表（下拉或跳转通知中心页面）
+3. **浏览通知** — 每条通知显示：标题、来源知识库、时间、简短摘要预览
+4. **查看详情** — 点击通知展开完整总结 + 关联知识点列表（带跳转链接）
+5. **跳转学习** — 点击关联知识点链接，直接跳转到对应知识库的 wiki 页面
+6. **标记已读** — 查看后自动标记已读，或手动全部标记已读
 
 ---
 
@@ -582,7 +609,7 @@ pytest --cov=app tests/
 
 | 职责 | 服务端（FastAPI） | 客户端（React SPA） |
 |------|-------------------|---------------------|
-| 业务逻辑 | 全部（Ingest、Query、Generate、Learning） | 无 |
+| 业务逻辑 | 全部（Ingest、Query、Generate、Notification） | 无 |
 | 数据库访问 | 全部 | 无，通过 API 获取 |
 | LLM 调用 | 全部 | 无 |
 | URL 抓取 | 全部 | 无 |
@@ -728,7 +755,6 @@ pytest --cov=app tests/
 
 - **FastAPI 模式：** 不确定依赖注入、中间件或后台任务时，查阅 [FastAPI 文档](https://fastapi.tiangolo.com/) —— 不要猜测 API 签名。
 - **LLM 提示词设计：** 不确定 wiki 操作的提示词结构时，参考 [llm-wiki.md](llm-wiki.md) 中的原则 —— wiki 是一个持久的、可复利的产物。
-- **SM-2 算法：** 实现间隔重复时，遵循 [SM-2 原始规范](https://super-memory.com/english/ol/sm2.htm) —— 不要自行发明调度逻辑。
 - **URL 抓取：** URL 抓取失败时，尝试备用抓取器（Firecrawl → Jina → 原始 HTTP + readability）。记录失败日志以便调试。
 - **RSS 解析：** 使用 `feedparser` 库解析 RSS/Atom 订阅源。不同网站的 RSS 格式差异很大，务必处理缺失字段（作者、发布时间、摘要）。
 - **RSS 去重：** 使用条目的 `guid` 字段作为唯一标识（而非 URL，因为 URL 可能变化）。如果 `guid` 缺失，回退到 URL。
@@ -765,37 +791,32 @@ pytest --cov=app tests/
 2. URL 抓取服务（Firecrawl/Jina）
 3. 来源存储（数据库 + 文件系统，按知识库隔离）
 4. LLM Ingest 流水线（来源 → wiki 页面，限定知识库范围）
-5. Wiki 页面 CRUD API（按知识库范围）
-6. `index.md` + `log.md` 自动维护（每个知识库独立）
-7. 基础网页 UI：知识库切换、提交 URL、浏览 wiki 页面
+5. 知识新增通知生成（Ingest 完成后自动通知，含总结 + 关联知识点链接）
+6. Wiki 页面 CRUD API（按知识库范围）
+7. `index.md` + `log.md` 自动维护（每个知识库独立）
+8. 基础网页 UI：知识库切换、提交 URL、浏览 wiki 页面、通知中心
 
 ### 第二阶段 — RSS 订阅 & 自动摄入
-8. RSS/Atom 订阅源管理（CRUD + 过滤规则）
-9. RSS 定时轮询服务（后台定时任务 + 去重）
-10. RSS 条目 → Ingest 流水线对接
-11. RSS 管理网页 UI（订阅源列表、抓取历史、手动触发）
+9. RSS/Atom 订阅源管理（CRUD + 过滤规则）
+10. RSS 定时轮询服务（后台定时任务 + 去重）
+11. RSS 条目 → Ingest 流水线对接（含自动通知生成）
+12. RSS 管理网页 UI（订阅源列表、抓取历史、手动触发）
 
 ### 第三阶段 — 查询、搜索 & 知识生成
-12. 对 wiki 的自然语言查询
-13. 跨知识库文档生成（多选知识库 + 主题 → 结构化长文）
-14. 全文搜索（PostgreSQL tsvector）
-15. 向量搜索（pgvector 语义搜索）
-16. 图谱可视化（wiki 页面关系）
-17. 回答归档（保存优质回答为 wiki 页面）
+13. 对 wiki 的自然语言查询
+14. 跨知识库文档生成（多选知识库 + 主题 → 结构化长文）
+15. 全文搜索（PostgreSQL tsvector）
+16. 向量搜索（pgvector 语义搜索）
+17. 图谱可视化（wiki 页面关系）
+18. 回答归档（保存优质回答为 wiki 页面）
 
-### 第四阶段 — 学习系统（网页端）
-18. SM-2 间隔重复服务
-19. 通过 LLM 生成测验/闪卡
-20. 闪卡复习界面（滑动交互）
-21. 学习统计 & 连续打卡追踪
-
-### 第五阶段 — 完善 & 扩展
-22. Wiki 健康检查（lint）自动化
-23. 页面间矛盾检测
-24. 批量摄入（多个 URL）
-25. 浏览器扩展（快速保存文章）
-26. Obsidian 兼容导出
-27. 多用户支持
+### 第四阶段 — 完善 & 扩展
+19. Wiki 健康检查（lint）自动化
+20. 页面间矛盾检测
+21. 批量摄入（多个 URL）
+22. 浏览器扩展（快速保存文章）
+23. Obsidian 兼容导出
+24. 多用户支持
 
 ---
 
@@ -804,7 +825,6 @@ pytest --cov=app tests/
 - [Karpathy LLM-Wiki 原始模式](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — 本项目的核心灵感来源
 - [Firecrawl API](https://docs.firecrawl.dev/) — URL 转 Markdown
 - [Jina Reader API](https://jina.ai/reader/) — 备选 URL 转 Markdown
-- [SM-2 间隔重复算法](https://super-memory.com/english/ol/sm2.htm)
 - [FastAPI 文档](https://fastapi.tiangolo.com/)
 - [React Router](https://reactrouter.com/) — SPA 客户端路由
 - [Vite](https://vitejs.dev/) — 前端构建工具
