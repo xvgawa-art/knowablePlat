@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class NotificationResponse(BaseModel):
@@ -12,7 +12,7 @@ class NotificationResponse(BaseModel):
     trigger_type: str
     title: str
     summary: str | None = None
-    related_points: list | None = None
+    related_points: list[dict] | None = None
     is_read: bool = False
     created_at: datetime | None = None
 
