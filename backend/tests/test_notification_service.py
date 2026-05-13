@@ -5,12 +5,14 @@ from unittest.mock import AsyncMock, patch
 async def test_generate_notification_parses_json() -> None:
     from app.services.notification import generate_ingest_notification
 
-    mock_response = json.dumps({
-        "summary": "本文介绍了新型 XSS 攻击的防护策略。",
-        "related_points": [
-            {"wiki_page_slug": "xss-attack", "title": "XSS 攻击", "relation_desc": "与已有知识互补"},
-        ],
-    })
+    mock_response = json.dumps(
+        {
+            "summary": "本文介绍了新型 XSS 攻击的防护策略。",
+            "related_points": [
+                {"wiki_page_slug": "xss-attack", "title": "XSS 攻击", "relation_desc": "与已有知识互补"},
+            ],
+        }
+    )
 
     wiki_pages = [{"title": "XSS 攻击", "slug": "xss-attack"}]
     with patch("app.services.notification.generate", new_callable=AsyncMock, return_value=mock_response):

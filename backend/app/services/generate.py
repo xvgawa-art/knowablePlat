@@ -1,7 +1,7 @@
 import structlog
 
 from app.prompts.loader import load_prompt
-from app.services.llm import generate
+from app.services.llm import generate_with_usage
 
 logger = structlog.get_logger()
 
@@ -38,7 +38,6 @@ async def retrieve_knowledge(kb_ids: list[str], topic: str) -> str:
 
                 all_context.append(f"## 知识库：{kb.name}\n\n{index_page.content[:3000]}")
 
-                # Try to find relevant pages by searching index for topic keywords
                 pages = await wiki_repo.list_by_kb(kb.id, limit=20)
                 for page in pages:
                     if page.content and any(kw in page.title.lower() for kw in topic.lower().split()):
@@ -52,18 +51,21 @@ async def generate_document(kb_ids: list[str], topic: str) -> dict:
 
     Returns dict with title, content, word_count, token_usage.
     """
+    total_tokens = 0
+
     # Step 1: Retrieve knowledge from selected KBs
     knowledge = await retrieve_knowledge(kb_ids, topic)
 
     # Step 2: Generate outline
     outline_prompt = f"主题要求：{topic}\n\n参考知识：\n{knowledge[:6000]}"
-    outline_result = await generate(outline_prompt, system=OUTLINE_SYSTEM)
+    outline_resp = await generate_with_usage(outline_prompt, system=OUTLINE_SYSTEM)
+    total_tokens += outline_resp.total_tokens
 
     import json
     import re
 
     try:
-        json_match = re.search(r"\{[\s\S]*\}", outline_result)
+        json_match = re.search(r"\{[\s\S]*\}", outline_resp.text)
         outline = json.loads(json_match.group()) if json_match else {}
     except json.JSONDecodeError:
         outline = {"title": topic, "sections": [{"heading": topic, "key_points": []}]}
@@ -80,19 +82,21 @@ async def generate_document(kb_ids: list[str], topic: str) -> dict:
         section_prompt = (
             f"章节：{heading}\n要点：{json.dumps(key_points, ensure_ascii=False)}\n\n参考知识：\n{knowledge[:4000]}"
         )
-        section_content = await generate(section_prompt, system=SECTION_SYSTEM)
-        section_contents.append(f"## {heading}\n\n{section_content}")
+        section_resp = await generate_with_usage(section_prompt, system=SECTION_SYSTEM)
+        total_tokens += section_resp.total_tokens
+        section_contents.append(f"## {heading}\n\n{section_resp.text}")
 
     # Step 4: Integrate into full document
     combined = f"# {title}\n\n" + "\n\n".join(section_contents)
     integrate_prompt = f"文档标题：{title}\n\n以下是需要整合的各章节内容：\n\n{combined[:12000]}"
-    final_content = await generate(integrate_prompt, system=INTEGRATE_SYSTEM)
+    final_resp = await generate_with_usage(integrate_prompt, system=INTEGRATE_SYSTEM)
+    total_tokens += final_resp.total_tokens
 
-    word_count = len(final_content)
+    word_count = len(final_resp.text)
 
     return {
         "title": title,
-        "content": final_content,
+        "content": final_resp.text,
         "word_count": word_count,
-        "token_usage": 0,
+        "token_usage": total_tokens,
     }

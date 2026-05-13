@@ -11,9 +11,7 @@ class RssEntryRepository(BaseRepository):
     def __init__(self, session: AsyncSession):
         super().__init__(RssEntry, session)
 
-    async def list_by_feed(
-        self, feed_id: uuid.UUID, offset: int = 0, limit: int = 50
-    ) -> list[RssEntry]:
+    async def list_by_feed(self, feed_id: uuid.UUID, offset: int = 0, limit: int = 50) -> list[RssEntry]:
         result = await self.session.execute(
             select(RssEntry)
             .where(RssEntry.feed_id == feed_id)
@@ -24,7 +22,5 @@ class RssEntryRepository(BaseRepository):
         return list(result.scalars().all())
 
     async def get_by_guid(self, feed_id: uuid.UUID, guid: str) -> RssEntry | None:
-        result = await self.session.execute(
-            select(RssEntry).where(RssEntry.feed_id == feed_id, RssEntry.guid == guid)
-        )
+        result = await self.session.execute(select(RssEntry).where(RssEntry.feed_id == feed_id, RssEntry.guid == guid))
         return result.scalar_one_or_none()

@@ -53,9 +53,7 @@ class KnowledgeBaseRepository(BaseRepository):
         from app.models.source import Source
         from app.models.wiki_page import WikiPage
 
-        source_count = await self.session.scalar(
-            select(func.count()).select_from(Source).where(Source.kb_id == kb_id)
-        )
+        source_count = await self.session.scalar(select(func.count()).select_from(Source).where(Source.kb_id == kb_id))
         wiki_count = await self.session.scalar(
             select(func.count()).select_from(WikiPage).where(WikiPage.kb_id == kb_id)
         )

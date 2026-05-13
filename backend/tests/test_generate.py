@@ -6,6 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.services.llm import LLMResponse
 
 
 @pytest.fixture
@@ -34,24 +35,26 @@ class TestGenerateService:
 
         call_count = 0
 
-        async def mock_generate(prompt, system=""):
+        async def mock_generate_with_usage(prompt, system=""):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return f"```json\n{outline_json}\n```"
+                text = f"```json\n{outline_json}\n```"
             elif call_count == 2:
-                return "XSS 攻击分为反射型和存储型两种主要类型..."
+                text = "XSS 攻击分为反射型和存储型两种主要类型..."
             else:
-                return "# XSS 攻击全解析\n\n## XSS 类型\n\nXSS 攻击分为反射型和存储型..."
+                text = "# XSS 攻击全解析\n\n## XSS 类型\n\nXSS 攻击分为反射型和存储型..."
+            return LLMResponse(text, input_tokens=50, output_tokens=100)
 
         with (
             patch("app.services.generate.retrieve_knowledge", return_value=sample_knowledge),
-            patch("app.services.generate.generate", side_effect=mock_generate),
+            patch("app.services.generate.generate_with_usage", side_effect=mock_generate_with_usage),
         ):
             result = await generate_document([str(uuid.uuid4())], "XSS 攻击")
             assert result["title"] == "XSS 攻击全解析"
             assert result["content"] is not None
             assert result["word_count"] > 0
+            assert result["token_usage"] > 0
             assert call_count == 3  # outline + section + integrate
 
     async def test_generate_document_outline_parse_fallback(self):
@@ -60,19 +63,20 @@ class TestGenerateService:
         sample_knowledge = "## 知识库：测试\n\n一些内容"
         call_count = 0
 
-        async def mock_generate(prompt, system=""):
+        async def mock_generate_with_usage(prompt, system=""):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return "This is not valid JSON at all"
+                text = "This is not valid JSON at all"
             elif call_count == 2:
-                return "Section content here"
+                text = "Section content here"
             else:
-                return "# Fallback Document\n\n## Test Topic\n\nSection content here"
+                text = "# Fallback Document\n\n## Test Topic\n\nSection content here"
+            return LLMResponse(text, input_tokens=10, output_tokens=20)
 
         with (
             patch("app.services.generate.retrieve_knowledge", return_value=sample_knowledge),
-            patch("app.services.generate.generate", side_effect=mock_generate),
+            patch("app.services.generate.generate_with_usage", side_effect=mock_generate_with_usage),
         ):
             result = await generate_document([str(uuid.uuid4())], "Test Topic")
             assert result["title"] == "Test Topic"
@@ -90,7 +94,7 @@ class TestGenerateAPI:
 
         with (
             patch("app.services.generate.retrieve_knowledge", return_value="知识内容"),
-            patch("app.services.generate.generate", return_value="生成结果"),
+            patch("app.services.generate.generate_with_usage", return_value=LLMResponse("生成结果", 10, 20)),
         ):
             resp = await client.post(
                 "/api/generate",
@@ -131,7 +135,7 @@ class TestGenerateAPI:
 
         with (
             patch("app.services.generate.retrieve_knowledge", return_value="知识"),
-            patch("app.services.generate.generate", return_value="结果"),
+            patch("app.services.generate.generate_with_usage", return_value=LLMResponse("结果", 10, 20)),
         ):
             resp = await client.post(
                 "/api/generate",

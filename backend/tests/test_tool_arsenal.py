@@ -5,18 +5,20 @@ from unittest.mock import AsyncMock, patch
 async def test_extract_tool_info_parses_json() -> None:
     from app.services.tool_arsenal import _extract_tool_info
 
-    mock_response = json.dumps({
-        "name": "Nmap",
-        "description": "网络扫描和安全审计工具",
-        "purpose": "端口扫描和服务识别",
-        "advantages": ["开源免费", "支持多种扫描技术"],
-        "scenarios": ["资产发现", "端口扫描"],
-        "category": "信息收集",
-        "homepage": "https://nmap.org",
-        "license": "GPL",
-        "platforms": ["Windows", "Linux", "macOS"],
-        "tags": ["扫描", "网络"],
-    })
+    mock_response = json.dumps(
+        {
+            "name": "Nmap",
+            "description": "网络扫描和安全审计工具",
+            "purpose": "端口扫描和服务识别",
+            "advantages": ["开源免费", "支持多种扫描技术"],
+            "scenarios": ["资产发现", "端口扫描"],
+            "category": "信息收集",
+            "homepage": "https://nmap.org",
+            "license": "GPL",
+            "platforms": ["Windows", "Linux", "macOS"],
+            "tags": ["扫描", "网络"],
+        }
+    )
 
     with patch("app.services.tool_arsenal.generate", new_callable=AsyncMock, return_value=mock_response):
         result = await _extract_tool_info("some tool content")
@@ -36,13 +38,15 @@ async def test_extract_tool_info_handles_invalid_json() -> None:
 async def test_categorize_tool() -> None:
     from app.services.tool_arsenal import _categorize_tool
 
-    mock_response = json.dumps({
-        "category": "Web安全",
-        "category_slug": "web-security",
-        "scenario_recommendations": [
-            {"scenario": "XSS 检测", "recommended": "Burp Suite"},
-        ],
-    })
+    mock_response = json.dumps(
+        {
+            "category": "Web安全",
+            "category_slug": "web-security",
+            "scenario_recommendations": [
+                {"scenario": "XSS 检测", "recommended": "Burp Suite"},
+            ],
+        }
+    )
 
     with patch("app.services.tool_arsenal.generate", new_callable=AsyncMock, return_value=mock_response):
         result = await _categorize_tool({"name": "test"})

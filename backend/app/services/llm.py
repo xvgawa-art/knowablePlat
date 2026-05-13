@@ -9,8 +9,33 @@ logger = structlog.get_logger()
 _client = AsyncAnthropic(api_key=settings.anthropic_auth_token, base_url=settings.anthropic_base_url)
 
 
+class LLMResponse:
+    """Response from LLM generate call with text and usage metadata."""
+
+    __slots__ = ("text", "input_tokens", "output_tokens")
+
+    def __init__(self, text: str, input_tokens: int = 0, output_tokens: int = 0):
+        self.text = text
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
 async def generate(prompt: str, system: str = "") -> str:
-    """Generate text using the configured LLM."""
+    """Generate text using the configured LLM.
+
+    Returns just the text string for backward compatibility.
+    Use generate_with_usage() when you need token counts.
+    """
+    result = await generate_with_usage(prompt, system)
+    return result.text
+
+
+async def generate_with_usage(prompt: str, system: str = "") -> LLMResponse:
+    """Generate text using the configured LLM, returning usage metadata."""
     kwargs: dict = {
         "model": settings.anthropic_model,
         "max_tokens": 4096,
@@ -21,8 +46,10 @@ async def generate(prompt: str, system: str = "") -> str:
 
     response = await _client.messages.create(**kwargs)
     text = response.content[0].text
-    logger.info("llm_generate", model=settings.anthropic_model, input_tokens=getattr(response.usage, "input_tokens", 0))
-    return text
+    input_tokens = getattr(response.usage, "input_tokens", 0)
+    output_tokens = getattr(response.usage, "output_tokens", 0)
+    logger.info("llm_generate", model=settings.anthropic_model, input_tokens=input_tokens, output_tokens=output_tokens)
+    return LLMResponse(text, input_tokens, output_tokens)
 
 
 async def generate_structured(prompt: str, schema: type[BaseModel], system: str = "") -> BaseModel:

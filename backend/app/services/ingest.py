@@ -17,7 +17,7 @@ from app.repositories.notification import NotificationRepository
 from app.repositories.source import SourceRepository
 from app.repositories.wiki_page import WikiPageRepository
 from app.services.filesystem import save_wiki_index, save_wiki_log, save_wiki_page
-from app.services.llm import generate
+from app.services.llm import generate, generate_with_usage
 
 logger = structlog.get_logger()
 
@@ -35,17 +35,18 @@ def _slugify(text: str) -> str:
     return text[:200].strip("-") or "untitled"
 
 
-async def _extract(source_content: str) -> dict:
-    """Extract structured information from source content."""
+async def _extract(source_content: str) -> tuple[dict, int]:
+    """Extract structured information from source content. Returns (data, tokens_used)."""
     prompt = f"请分析以下文章内容并提取关键信息：\n\n{source_content[:8000]}"
-    result = await generate(prompt, system=EXTRACT_SYSTEM)
+    resp = await generate_with_usage(prompt, system=EXTRACT_SYSTEM)
     try:
-        json_match = re.search(r"\{[\s\S]*\}", result)
+        json_match = re.search(r"\{[\s\S]*\}", resp.text)
         if json_match:
-            return json.loads(json_match.group())
+            return json.loads(json_match.group()), resp.total_tokens
     except json.JSONDecodeError:
-        logger.warning("extract_json_parse_failed", result=result[:200])
-    return {"title": "未知标题", "summary": result[:200], "key_points": [], "entities": [], "topics": []}
+        logger.warning("extract_json_parse_failed", result=resp.text[:200])
+    fallback = {"title": "未知标题", "summary": resp.text[:200], "key_points": [], "entities": [], "topics": []}
+    return fallback, resp.total_tokens
 
 
 async def _synthesize_wiki_page(
@@ -64,6 +65,24 @@ async def _synthesize_wiki_page(
 
     result = await generate(context, system=SYNTHESIZE_SYSTEM)
     return result
+
+
+async def _synthesize_wiki_page_with_usage(
+    kb_slug: str,
+    source_title: str,
+    source_summary: str,
+    extract_result: dict,
+    existing_pages: list[dict] | None = None,
+) -> tuple[str, int]:
+    """Generate wiki page content from extracted source information. Returns (content, tokens_used)."""
+    extract_str = json.dumps(extract_result, ensure_ascii=False)
+    context = f"知识库：{kb_slug}\n来源标题：{source_title}\n来源摘要：{source_summary}\n提取信息：{extract_str[:4000]}"
+    if existing_pages:
+        page_list = "\n".join(f"- {p['title']} ({p['slug']})" for p in existing_pages[:20])
+        context += f"\n\n已有 wiki 页面：\n{page_list}"
+
+    resp = await generate_with_usage(context, system=SYNTHESIZE_SYSTEM)
+    return resp.text, resp.total_tokens
 
 
 async def _find_cross_references(
@@ -90,6 +109,32 @@ async def _find_cross_references(
     except json.JSONDecodeError:
         logger.warning("crossref_json_parse_failed", result=result[:200])
     return []
+
+
+async def _find_cross_references_with_usage(
+    kb_slug: str, new_page_title: str, new_page_content: str, existing_pages: list[dict]
+) -> tuple[list[str], int]:
+    """Find cross-references. Returns (slugs, tokens_used)."""
+    if not existing_pages:
+        return [], 0
+
+    page_list = "\n".join(f"- {p['title']} ({p['slug']})" for p in existing_pages[:30])
+    prompt = (
+        f"基于以下新页面和已有页面列表，找出应该互相链接的页面。\n\n"
+        f"新页面：{new_page_title}\n新页面内容摘要：{new_page_content[:2000]}\n\n"
+        f"已有页面：\n{page_list}"
+    )
+
+    resp = await generate_with_usage(prompt, system=CROSSREF_SYSTEM)
+    try:
+        json_match = re.search(r"\[[\s\S]*\]", resp.text)
+        if json_match:
+            slugs = json.loads(json_match.group())
+            if isinstance(slugs, list):
+                return [s for s in slugs if isinstance(s, str)], resp.total_tokens
+    except json.JSONDecodeError:
+        logger.warning("crossref_json_parse_failed", result=resp.text[:200])
+    return [], resp.total_tokens
 
 
 async def _build_index_content(pages: list[WikiPage]) -> str:
@@ -150,9 +195,12 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                 return
 
             try:
+                total_tokens = 0
+
                 # Step 1: Extract structured info from source content
                 logger.info("ingest_extract_start", source_id=str(source_id))
-                extracted = await _extract(source.raw_content)
+                extracted, tokens = await _extract(source.raw_content)
+                total_tokens += tokens
 
                 title = extracted.get("title", source.title or "未知标题")
                 source.title = title
@@ -162,9 +210,10 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                 existing_pages = await wiki_repo.list_by_kb(kb.id, limit=100)
                 existing_dicts = [{"title": p.title, "slug": p.slug} for p in existing_pages]
 
-                wiki_content = await _synthesize_wiki_page(
+                wiki_content, tokens = await _synthesize_wiki_page_with_usage(
                     kb_slug, title, extracted.get("summary", ""), extracted, existing_dicts
                 )
+                total_tokens += tokens
 
                 wiki_page = await wiki_repo.create(
                     kb_id=kb.id,
@@ -219,7 +268,10 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                     )
 
                 # Step 4: Cross-reference with existing pages
-                cross_ref_slugs = await _find_cross_references(kb_slug, title, wiki_content[:2000], existing_dicts)
+                cross_ref_slugs, tokens = await _find_cross_references_with_usage(
+                    kb_slug, title, wiki_content[:2000], existing_dicts
+                )
+                total_tokens += tokens
                 if cross_ref_slugs:
                     outgoing = list(set((wiki_page.outgoing_links or []) + cross_ref_slugs))
                     await wiki_repo.update(wiki_page, outgoing_links=outgoing)
@@ -303,6 +355,7 @@ async def run_ingest_pipeline(source_id: uuid.UUID, kb_slug: str) -> None:
                 from app.models.source import SourceStatus
 
                 source.status = SourceStatus.completed
+                source.token_usage = total_tokens
                 source.fetched_at = datetime.now(UTC).replace(tzinfo=None)
 
                 logger.info("ingest_completed", source_id=str(source_id), title=title)

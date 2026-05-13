@@ -12,9 +12,7 @@ class RssFeedRepository(BaseRepository):
         super().__init__(RssFeed, session)
 
     async def list_by_kb(self, kb_id: uuid.UUID, offset: int = 0, limit: int = 50) -> list[RssFeed]:
-        result = await self.session.execute(
-            select(RssFeed).where(RssFeed.kb_id == kb_id).offset(offset).limit(limit)
-        )
+        result = await self.session.execute(select(RssFeed).where(RssFeed.kb_id == kb_id).offset(offset).limit(limit))
         return list(result.scalars().all())
 
     async def list_active(self) -> list[RssFeed]:

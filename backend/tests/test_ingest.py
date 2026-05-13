@@ -35,38 +35,45 @@ async def test_slugify_basic() -> None:
 async def test_extract_parses_json() -> None:
     from app.services.ingest import _extract
 
-    mock_response = json.dumps({
-        "title": "测试文章",
-        "summary": "这是一个测试摘要",
-        "key_points": ["要点1", "要点2"],
-        "entities": [{"name": "Python", "type": "tool"}],
-        "topics": ["编程"],
-    })
+    mock_response = json.dumps(
+        {
+            "title": "测试文章",
+            "summary": "这是一个测试摘要",
+            "key_points": ["要点1", "要点2"],
+            "entities": [{"name": "Python", "type": "tool"}],
+            "topics": ["编程"],
+        }
+    )
 
-    with patch("app.services.ingest.generate", new_callable=AsyncMock, return_value=mock_response):
-        result = await _extract("some content")
+    from app.services.llm import LLMResponse
+
+    mock_llm = AsyncMock(return_value=LLMResponse(mock_response, 100, 200))
+    with patch("app.services.ingest.generate_with_usage", mock_llm):
+        result, tokens = await _extract("some content")
         assert result["title"] == "测试文章"
         assert result["summary"] == "这是一个测试摘要"
         assert len(result["key_points"]) == 2
         assert len(result["entities"]) == 1
+        assert tokens == 300
 
 
 async def test_extract_handles_invalid_json() -> None:
     from app.services.ingest import _extract
+    from app.services.llm import LLMResponse
 
-    with patch("app.services.ingest.generate", new_callable=AsyncMock, return_value="这不是JSON"):
-        result = await _extract("some content")
+    mock_llm = AsyncMock(return_value=LLMResponse("这不是JSON", 10, 20))
+    with patch("app.services.ingest.generate_with_usage", mock_llm):
+        result, tokens = await _extract("some content")
         assert result["title"] == "未知标题"
         assert result["key_points"] == []
+        assert tokens == 30
 
 
 async def test_synthesize_wiki_page() -> None:
     from app.services.ingest import _synthesize_wiki_page
 
     with patch("app.services.ingest.generate", new_callable=AsyncMock, return_value="# 测试页面\n\n内容"):
-        result = await _synthesize_wiki_page(
-            "test-kb", "标题", "摘要", {"title": "标题", "key_points": []}
-        )
+        result = await _synthesize_wiki_page("test-kb", "标题", "摘要", {"title": "标题", "key_points": []})
         assert "# 测试页面" in result
 
 
