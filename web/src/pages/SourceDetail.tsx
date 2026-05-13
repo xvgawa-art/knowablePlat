@@ -20,6 +20,13 @@ export default function SourceDetail() {
     queryKey: ["source", kbSlug, sourceId],
     queryFn: () => api.get(`/kb/${kbSlug}/sources/${sourceId}`),
     enabled: !!kbSlug && !!sourceId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.status === "processing" || data?.status === "pending") {
+        return 5000;
+      }
+      return false;
+    },
   });
 
   const retryMutation = useMutation({
