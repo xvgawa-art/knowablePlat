@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 
 interface SourceResponse {
@@ -12,18 +12,25 @@ interface SourceResponse {
 export default function SubmitSource() {
   const { kbSlug } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [url, setUrl] = useState("");
   const [batchUrls, setBatchUrls] = useState("");
   const [mode, setMode] = useState<"single" | "batch">("single");
 
   const singleMutation = useMutation({
     mutationFn: (sourceUrl: string) => api.post(`/kb/${kbSlug}/sources`, { url: sourceUrl }),
-    onSuccess: () => navigate(`/kb/${kbSlug}/sources`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sources", kbSlug] });
+      navigate(`/kb/${kbSlug}/sources`);
+    },
   });
 
   const batchMutation = useMutation({
     mutationFn: (urls: string[]) => api.post<SourceResponse[]>(`/kb/${kbSlug}/sources/batch`, { urls }),
-    onSuccess: () => navigate(`/kb/${kbSlug}/sources`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sources", kbSlug] });
+      navigate(`/kb/${kbSlug}/sources`);
+    },
   });
 
   const handleSingleSubmit = (e: React.FormEvent) => {
