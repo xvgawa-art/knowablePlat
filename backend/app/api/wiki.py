@@ -10,7 +10,7 @@ from app.models.wiki_page import WikiPageType
 from app.repositories.activity_log import ActivityLogRepository
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.wiki_page import WikiPageRepository
-from app.schemas.paginated import PaginatedResponse
+from app.schemas.paginated import BatchDeleteRequest, PaginatedResponse
 from app.schemas.wiki import (
     ActivityLogResponse,
     SemanticSearchRequest,
@@ -131,6 +131,25 @@ async def lint_wiki_endpoint(kb_slug: str, db: AsyncSession = Depends(get_db)):
     from app.services.wiki_engine import lint_wiki
 
     return await lint_wiki(str(kb.id), kb_slug, db)
+
+
+@router.post("/batch-delete", status_code=status.HTTP_204_NO_CONTENT)
+async def batch_delete_wiki_pages(kb_slug: str, data: BatchDeleteRequest, db: AsyncSession = Depends(get_db)):
+    kb = await _get_kb(kb_slug, db)
+    wiki_repo = WikiPageRepository(db)
+    ids = [uuid.UUID(i) for i in data.ids]
+    pages = []
+    for pid in ids:
+        page = await wiki_repo.get_by_id(pid)
+        if page and page.kb_id == kb.id:
+            pages.append(page)
+    for page in pages:
+        await wiki_repo.delete(page)
+
+    from app.services.filesystem import delete_wiki_page as delete_wiki_file
+
+    for page in pages:
+        delete_wiki_file(kb_slug, page.slug)
 
 
 @router.get("/{slug}", response_model=WikiPageResponse)

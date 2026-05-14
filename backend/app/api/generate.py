@@ -7,7 +7,7 @@ from app.database import get_db
 from app.models.generated_doc import DocStatus
 from app.repositories.generated_doc import GeneratedDocRepository
 from app.schemas.generate import GenerateListItem, GenerateRequest, GenerateResponse
-from app.schemas.paginated import PaginatedResponse
+from app.schemas.paginated import BatchDeleteRequest, PaginatedResponse
 
 router = APIRouter(prefix="/api/generate", tags=["generate"])
 
@@ -72,6 +72,13 @@ async def list_generations(offset: int = 0, limit: int = 50, db: AsyncSession = 
     items = await repo.list_all(offset=offset, limit=limit)
     total = await repo.count_all()
     return PaginatedResponse(items=items, total=total)
+
+
+@router.post("/batch-delete", status_code=status.HTTP_204_NO_CONTENT)
+async def batch_delete_generations(data: BatchDeleteRequest, db: AsyncSession = Depends(get_db)):
+    ids = [uuid.UUID(i) for i in data.ids]
+    repo = GeneratedDocRepository(db)
+    await repo.delete_many(ids)
 
 
 @router.get("/{doc_id}", response_model=GenerateResponse)

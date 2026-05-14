@@ -7,6 +7,7 @@ from app.database import get_db
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.notification import NotificationRepository
 from app.schemas.notification import NotificationListResponse, NotificationResponse
+from app.schemas.paginated import BatchDeleteRequest
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -50,6 +51,13 @@ async def get_unread_count(kb_id: uuid.UUID | None = None, db: AsyncSession = De
     notif_repo = NotificationRepository(db)
     count = await notif_repo.count_unread(kb_id=kb_id)
     return {"unread_count": count}
+
+
+@router.post("/batch-delete", status_code=status.HTTP_204_NO_CONTENT)
+async def batch_delete_notifications(data: BatchDeleteRequest, db: AsyncSession = Depends(get_db)):
+    notif_repo = NotificationRepository(db)
+    ids = [uuid.UUID(i) for i in data.ids]
+    await notif_repo.delete_many(ids)
 
 
 @router.get("/{notification_id}", response_model=NotificationResponse)

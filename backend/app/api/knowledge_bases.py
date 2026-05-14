@@ -6,7 +6,7 @@ from app.database import get_db
 from app.models.user import User
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.schemas.knowledge_base import KnowledgeBaseCreate, KnowledgeBaseResponse, KnowledgeBaseUpdate
-from app.schemas.paginated import PaginatedResponse
+from app.schemas.paginated import BatchDeleteRequest, PaginatedResponse
 
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
 
@@ -46,6 +46,15 @@ async def list_kbs(
         items = await repo.list_all(offset=offset, limit=limit)
         total = await repo.count_all()
     return PaginatedResponse(items=items, total=total)
+
+
+@router.post("/batch-delete", status_code=status.HTTP_204_NO_CONTENT)
+async def batch_delete_kbs(data: BatchDeleteRequest, db: AsyncSession = Depends(get_db)):
+    repo = _repo(db)
+    for slug in data.ids:
+        kb = await repo.get_by_slug(slug)
+        if kb and not kb.is_system:
+            await repo.delete(kb)
 
 
 @router.get("/{kb_slug}", response_model=KnowledgeBaseResponse)
