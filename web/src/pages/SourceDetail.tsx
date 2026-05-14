@@ -2,7 +2,7 @@ import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
-import type { SourceDetail as SourceDetailType, WikiPageListItem } from "../types";
+import type { PaginatedResponse, SourceDetail as SourceDetailType, WikiPageListItem } from "../types";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending: { label: "待处理", color: "bg-yellow-100 text-yellow-800" },
@@ -37,11 +37,12 @@ export default function SourceDetail() {
     },
   });
 
-  const { data: wikiPages = [] } = useQuery<WikiPageListItem[]>({
+  const { data: wikiData } = useQuery<PaginatedResponse<WikiPageListItem>>({
     queryKey: ["wikiBySource", kbSlug, sourceId],
     queryFn: () => api.get(`/kb/${kbSlug}/wiki`, { source_id: sourceId! }),
     enabled: !!kbSlug && !!sourceId,
   });
+  const wikiPages = wikiData?.items ?? [];
 
   if (isLoading) return <div className="p-8 text-gray-500">加载中...</div>;
   if (error || !source) return <div className="p-8 text-red-600">来源不存在</div>;

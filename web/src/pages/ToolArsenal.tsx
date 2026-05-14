@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { WikiPageListItem } from "../types";
+import type { PaginatedResponse, WikiPageListItem } from "../types";
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   tool: { label: "工具", color: "bg-blue-100 text-blue-700" },
@@ -10,10 +10,11 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function ToolArsenal() {
-  const { data: pages = [], isLoading } = useQuery<WikiPageListItem[]>({
+  const { data: wikiData, isLoading } = useQuery<PaginatedResponse<WikiPageListItem>>({
     queryKey: ["wikiPages", "tool-arsenal"],
     queryFn: () => api.get("/kb/tool-arsenal/wiki"),
   });
+  const pages = wikiData?.items ?? [];
 
   const categories = pages.filter((p) => p.page_type === "tool_category");
   const tools = pages.filter((p) => p.page_type === "tool");

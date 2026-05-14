@@ -1,7 +1,7 @@
 import { useParams, Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { KnowledgeBase, Source, WikiPageListItem } from "../types";
+import type { KnowledgeBase, PaginatedResponse, Source, WikiPageListItem } from "../types";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending: { label: "待处理", color: "bg-yellow-100 text-yellow-800" },
@@ -36,17 +36,19 @@ export default function KbDetail() {
     enabled: !!kbSlug,
   });
 
-  const { data: sources = [] } = useQuery<Source[]>({
+  const { data: sourcesData } = useQuery<PaginatedResponse<Source>>({
     queryKey: ["sources", kbSlug],
     queryFn: () => api.get(`/kb/${kbSlug}/sources`, { limit: 5 }),
     enabled: !!kbSlug,
   });
+  const sources = sourcesData?.items ?? [];
 
-  const { data: wikiPages = [] } = useQuery<WikiPageListItem[]>({
+  const { data: wikiData } = useQuery<PaginatedResponse<WikiPageListItem>>({
     queryKey: ["wiki", kbSlug],
     queryFn: () => api.get(`/kb/${kbSlug}/wiki`, { limit: 5 }),
     enabled: !!kbSlug,
   });
+  const wikiPages = wikiData?.items ?? [];
 
   if (isLoading) return <div className="p-8 text-gray-500">加载中...</div>;
   if (error || !kb) return <div className="p-8 text-red-600">知识库不存在</div>;

@@ -2,27 +2,29 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api } from "../api/client";
-import type { KnowledgeBase, GeneratedDoc } from "../types";
+import type { GeneratedDoc, KnowledgeBase, PaginatedResponse } from "../types";
 
 export default function Generate() {
   const queryClient = useQueryClient();
   const [selectedKbIds, setSelectedKbIds] = useState<string[]>([]);
   const [topic, setTopic] = useState("");
 
-  const { data: knowledgeBases = [] } = useQuery<KnowledgeBase[]>({
+  const { data: kbData } = useQuery<PaginatedResponse<KnowledgeBase>>({
     queryKey: ["knowledgeBases"],
-    queryFn: () => api.get("/knowledge-bases"),
+    queryFn: () => api.get("/knowledge-bases", { limit: 100 }),
   });
+  const knowledgeBases = kbData?.items ?? [];
 
-  const { data: docs = [] } = useQuery<GeneratedDoc[]>({
+  const { data: docsData } = useQuery<PaginatedResponse<GeneratedDoc>>({
     queryKey: ["generatedDocs"],
     queryFn: () => api.get("/generate"),
     refetchInterval: (query) => {
       const data = query.state.data;
-      if (data?.some((d) => d.status === "generating")) return 5000;
+      if (data?.items?.some((d) => d.status === "generating")) return 5000;
       return false;
     },
   });
+  const docs = docsData?.items ?? [];
 
   const generateMutation = useMutation({
     mutationFn: () => api.post<GeneratedDoc>("/generate", { kb_ids: selectedKbIds, topic }),

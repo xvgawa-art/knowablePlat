@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useAppStore } from "../store";
 import { api } from "../api/client";
-import type { KnowledgeBase } from "../types";
+import type { KnowledgeBase, PaginatedResponse } from "../types";
 
 export default function Sidebar() {
   const { kbSlug } = useParams();
@@ -11,10 +11,11 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { sidebarOpen, setCurrentKbSlug } = useAppStore();
 
-  const { data: knowledgeBases = [] } = useQuery<KnowledgeBase[]>({
+  const { data: kbData } = useQuery<PaginatedResponse<KnowledgeBase>>({
     queryKey: ["knowledgeBases"],
-    queryFn: () => api.get("/knowledge-bases"),
+    queryFn: () => api.get("/knowledge-bases", { limit: 100 }),
   });
+  const knowledgeBases = kbData?.items ?? [];
 
   const { data: unreadData } = useQuery<{ unread_count: number }>({
     queryKey: ["unreadCount"],

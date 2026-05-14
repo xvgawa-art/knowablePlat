@@ -1,13 +1,14 @@
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { KnowledgeBase, Notification } from "../types";
+import type { KnowledgeBase, Notification, PaginatedResponse } from "../types";
 
 export default function Dashboard() {
-  const { data: knowledgeBases = [], isLoading } = useQuery<KnowledgeBase[]>({
+  const { data: kbData, isLoading } = useQuery<PaginatedResponse<KnowledgeBase>>({
     queryKey: ["knowledgeBases"],
-    queryFn: () => api.get("/knowledge-bases"),
+    queryFn: () => api.get("/knowledge-bases", { limit: 100 }),
   });
+  const knowledgeBases = kbData?.items ?? [];
 
   const { data: notificationsData } = useQuery<{
     items: Notification[];

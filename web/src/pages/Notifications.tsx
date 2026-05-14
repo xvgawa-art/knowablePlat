@@ -6,7 +6,7 @@ import NotificationDetail from "../components/notification/NotificationDetail";
 import Pagination from "../components/Pagination";
 import { usePagination } from "../hooks/usePagination";
 import { useBatchSelect } from "../hooks/useBatchSelect";
-import type { KnowledgeBase, Notification, NotificationList } from "../types";
+import type { KnowledgeBase, Notification, NotificationList, PaginatedResponse } from "../types";
 
 export default function Notifications() {
   const { id } = useParams();
@@ -21,10 +21,11 @@ function NotificationListPage() {
   const pagination = usePagination(20);
   const batch = useBatchSelect();
 
-  const { data: knowledgeBases = [] } = useQuery<KnowledgeBase[]>({
+  const { data: kbData } = useQuery<PaginatedResponse<KnowledgeBase>>({
     queryKey: ["knowledgeBases"],
-    queryFn: () => api.get("/knowledge-bases"),
+    queryFn: () => api.get("/knowledge-bases", { limit: 100 }),
   });
+  const knowledgeBases = kbData?.items ?? [];
 
   const { data, isLoading } = useQuery<NotificationList>({
     queryKey: ["notifications", showUnread, filterKbId, pagination.offset, pagination.pageSize],
