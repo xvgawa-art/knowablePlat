@@ -63,6 +63,7 @@ export interface Notification {
 export interface NotificationList {
   items: Notification[];
   unread_count: number;
+  total: number;
 }
 
 export interface GraphData {
@@ -85,4 +86,9 @@ export interface GeneratedDoc {
   status: "generating" | "completed" | "failed";
   word_count: number;
   created_at: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
 }
