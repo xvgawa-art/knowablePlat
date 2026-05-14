@@ -16,26 +16,32 @@ async def _run_generate(doc_id: uuid.UUID, kb_ids: list[str], topic: str) -> Non
     from app.database import async_sessionmaker
     from app.services.generate import generate_document
 
+    try:
+        result = await generate_document(kb_ids, topic)
+    except Exception as e:
+        import structlog
+
+        structlog.get_logger().error("generate_failed", doc_id=str(doc_id), error=str(e))
+        async with async_sessionmaker() as session:
+            async with session.begin():
+                repo = GeneratedDocRepository(session)
+                doc = await repo.get_by_id(doc_id)
+                if doc:
+                    doc.status = DocStatus.failed
+        return
+
     async with async_sessionmaker() as session:
         async with session.begin():
             repo = GeneratedDocRepository(session)
             doc = await repo.get_by_id(doc_id)
             if doc is None:
                 return
-
-            try:
-                result = await generate_document(kb_ids, topic)
-                doc.title = result["title"]
-                doc.content = result["content"]
-                doc.word_count = result["word_count"]
-                doc.token_usage = result["token_usage"]
-                doc.kb_ids = kb_ids
-                doc.status = DocStatus.completed
-            except Exception as e:
-                doc.status = DocStatus.failed
-                import structlog
-
-                structlog.get_logger().error("generate_failed", doc_id=str(doc_id), error=str(e))
+            doc.title = result["title"]
+            doc.content = result["content"]
+            doc.word_count = result["word_count"]
+            doc.token_usage = result["token_usage"]
+            doc.kb_ids = kb_ids
+            doc.status = DocStatus.completed
 
 
 @router.post("", response_model=GenerateResponse, status_code=status.HTTP_201_CREATED)
