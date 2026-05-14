@@ -4,8 +4,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import FeedForm from "../components/rss/FeedForm";
 import FeedCard from "../components/rss/FeedCard";
+import Pagination from "../components/Pagination";
+import { usePagination } from "../hooks/usePagination";
+import { useBatchSelect } from "../hooks/useBatchSelect";
 import { EMPTY_FORM, parseList } from "../components/rss/types";
 import type { RssFeed, RssEntry, FeedFormData } from "../components/rss/types";
+import type { PaginatedResponse } from "../types";
 
 export default function RssManager() {
   const { kbSlug } = useParams();
@@ -14,12 +18,18 @@ export default function RssManager() {
   const [editingFeed, setEditingFeed] = useState<string | null>(null);
   const [form, setForm] = useState<FeedFormData>(EMPTY_FORM);
   const [expandedFeed, setExpandedFeed] = useState<string | null>(null);
+  const pagination = usePagination(20);
+  const batch = useBatchSelect();
 
-  const { data: feeds = [], isLoading } = useQuery<RssFeed[]>({
-    queryKey: ["rssFeeds", kbSlug],
-    queryFn: () => api.get(`/kb/${kbSlug}/rss`),
+  const { data, isLoading } = useQuery<PaginatedResponse<RssFeed>>({
+    queryKey: ["rssFeeds", kbSlug, pagination.offset, pagination.pageSize],
+    queryFn: () => api.get(`/kb/${kbSlug}/rss`, { offset: pagination.offset, limit: pagination.pageSize }),
     enabled: !!kbSlug,
   });
+
+  const feeds = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const allIds = feeds.map((f) => f.id);
 
   const { data: entries = [] } = useQuery<RssEntry[]>({
     queryKey: ["rssEntries", expandedFeed],
@@ -40,6 +50,11 @@ export default function RssManager() {
   const deleteMutation = useMutation({
     mutationFn: (feedId: string) => api.del(`/kb/${kbSlug}/rss/${feedId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["rssFeeds", kbSlug] }),
+  });
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => api.post(`/kb/${kbSlug}/rss/batch-delete`, { ids }),
+    onSuccess: () => { batch.clearAll(); queryClient.invalidateQueries({ queryKey: ["rssFeeds", kbSlug] }); },
   });
 
   const fetchMutation = useMutation({
@@ -63,35 +78,39 @@ export default function RssManager() {
     });
   }
 
+  function handleBatchDelete() {
+    if (!confirm(`确定删除选中的 ${batch.selectedIds.size} 项？`)) return;
+    batchDeleteMutation.mutate(Array.from(batch.selectedIds));
+  }
+
   const isFormOpen = showAdd || editingFeed !== null;
-  const activeMutation = editingFeed ? editMutation : addMutation;
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">RSS 订阅管理</h1>
-        <button
-          onClick={() => { setForm(EMPTY_FORM); setEditingFeed(null); setShowAdd(!showAdd); }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          添加订阅
-        </button>
+        <div className="flex gap-3 items-center">
+          {batch.selectedIds.size > 0 && (
+            <button onClick={handleBatchDelete} disabled={batchDeleteMutation.isPending}
+              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50">
+              删除选中 ({batch.selectedIds.size})
+            </button>
+          )}
+          <button onClick={() => { setForm(EMPTY_FORM); setEditingFeed(null); setShowAdd(!showAdd); }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">添加订阅</button>
+        </div>
       </div>
 
       {isFormOpen && (
-        <FeedForm
-          form={form}
-          setForm={setForm}
-          isEditing={!!editingFeed}
+        <FeedForm form={form} setForm={setForm} isEditing={!!editingFeed}
           isPending={addMutation.isPending || editMutation.isPending}
-          error={activeMutation.isError ? (activeMutation.error instanceof Error ? activeMutation.error : null) : null}
-          onSubmit={(data) => {
-            const payload = { name: form.name, url: form.url, ...data };
-            if (editingFeed) editMutation.mutate(payload);
-            else addMutation.mutate(payload);
+          error={editMutation.isError ? (editMutation.error instanceof Error ? editMutation.error : null)
+            : addMutation.isError ? (addMutation.error instanceof Error ? addMutation.error : null) : null}
+          onSubmit={() => {
+            const payload = { name: form.name, url: form.url };
+            if (editingFeed) editMutation.mutate(payload); else addMutation.mutate(payload);
           }}
-          onCancel={() => { setShowAdd(false); setEditingFeed(null); setForm(EMPTY_FORM); }}
-        />
+          onCancel={() => { setShowAdd(false); setEditingFeed(null); setForm(EMPTY_FORM); }} />
       )}
 
       {isLoading ? (
@@ -99,22 +118,34 @@ export default function RssManager() {
       ) : feeds.length === 0 ? (
         <p className="text-gray-500">暂无 RSS 订阅源。点击上方按钮添加。</p>
       ) : (
-        <div className="space-y-4">
-          {feeds.map((feed) => (
-            <FeedCard
-              key={feed.id}
-              feed={feed}
-              entries={expandedFeed === feed.id ? entries : []}
-              isExpanded={expandedFeed === feed.id}
-              onToggleExpand={() => setExpandedFeed(expandedFeed === feed.id ? null : feed.id)}
-              onFetch={() => fetchMutation.mutate(feed.id)}
-              onToggle={() => toggleMutation.mutate({ feedId: feed.id, isActive: !feed.is_active })}
-              onEdit={() => startEdit(feed)}
-              onDelete={() => { if (confirm(`确定删除订阅「${feed.name}」？`)) deleteMutation.mutate(feed.id); }}
-              fetchPending={fetchMutation.isPending}
-            />
-          ))}
-        </div>
+        <>
+          <div className="mb-2 flex items-center gap-2">
+            <input type="checkbox"
+              checked={allIds.length > 0 && allIds.every((id) => batch.isSelected(id))}
+              onChange={() => (allIds.every((id) => batch.isSelected(id)) ? batch.clearAll() : batch.selectAll(allIds))}
+              className="rounded border-gray-300" />
+            <span className="text-xs text-gray-500">全选</span>
+          </div>
+          <div className="space-y-4">
+            {feeds.map((feed) => (
+              <div key={feed.id} className="flex items-center gap-3">
+                <input type="checkbox" checked={batch.isSelected(feed.id)}
+                  onChange={() => batch.toggle(feed.id)} className="rounded border-gray-300" />
+                <div className="flex-1">
+                  <FeedCard feed={feed} entries={expandedFeed === feed.id ? entries : []}
+                    isExpanded={expandedFeed === feed.id}
+                    onToggleExpand={() => setExpandedFeed(expandedFeed === feed.id ? null : feed.id)}
+                    onFetch={() => fetchMutation.mutate(feed.id)}
+                    onToggle={() => toggleMutation.mutate({ feedId: feed.id, isActive: !feed.is_active })}
+                    onEdit={() => startEdit(feed)}
+                    onDelete={() => { if (confirm(`确定删除订阅「${feed.name}」？`)) deleteMutation.mutate(feed.id); }}
+                    fetchPending={fetchMutation.isPending} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <Pagination page={pagination.page} pageSize={pagination.pageSize} total={total} onPageChange={pagination.setPage} />
+        </>
       )}
     </div>
   );

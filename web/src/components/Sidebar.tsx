@@ -1,5 +1,6 @@
 import { Link, useParams, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useAppStore } from "../store";
 import { api } from "../api/client";
 import type { KnowledgeBase } from "../types";
@@ -23,9 +24,11 @@ export default function Sidebar() {
 
   const currentKb = knowledgeBases.find((kb) => kb.slug === kbSlug);
 
-  if (kbSlug && currentKb) {
-    setCurrentKbSlug(kbSlug);
-  }
+  useEffect(() => {
+    if (kbSlug && currentKb) {
+      setCurrentKbSlug(kbSlug);
+    }
+  }, [kbSlug, currentKb, setCurrentKbSlug]);
 
   if (!sidebarOpen) {
     return null;
