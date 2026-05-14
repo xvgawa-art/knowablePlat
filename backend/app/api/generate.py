@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.generated_doc import DocStatus
 from app.repositories.generated_doc import GeneratedDocRepository
 from app.schemas.generate import GenerateListItem, GenerateRequest, GenerateResponse
+from app.schemas.paginated import PaginatedResponse
 
 router = APIRouter(prefix="/api/generate", tags=["generate"])
 
@@ -65,10 +66,12 @@ async def create_generation(
     return doc
 
 
-@router.get("", response_model=list[GenerateListItem])
+@router.get("", response_model=PaginatedResponse[GenerateListItem])
 async def list_generations(offset: int = 0, limit: int = 50, db: AsyncSession = Depends(get_db)):
     repo = GeneratedDocRepository(db)
-    return await repo.list_all(offset=offset, limit=limit)
+    items = await repo.list_all(offset=offset, limit=limit)
+    total = await repo.count_all()
+    return PaginatedResponse(items=items, total=total)
 
 
 @router.get("/{doc_id}", response_model=GenerateResponse)

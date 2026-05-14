@@ -8,6 +8,7 @@ from app.models.knowledge_base import KnowledgeBase
 from app.models.source import SourceStatus
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.source import SourceRepository
+from app.schemas.paginated import PaginatedResponse
 from app.schemas.source import BatchSourceCreate, SourceCreate, SourceDetailResponse, SourceResponse
 from app.services.fetcher import fetch_url
 
@@ -99,10 +100,13 @@ async def batch_create_sources(
     return sources
 
 
-@router.get("", response_model=list[SourceResponse])
+@router.get("", response_model=PaginatedResponse[SourceResponse])
 async def list_sources(kb_slug: str, offset: int = 0, limit: int = 50, db: AsyncSession = Depends(get_db)):
     kb = await _get_kb(kb_slug, db)
-    return await _source_repo(db).list_by_kb(kb.id, offset=offset, limit=limit)
+    repo = _source_repo(db)
+    items = await repo.list_by_kb(kb.id, offset=offset, limit=limit)
+    total = await repo.count_by_kb(kb.id)
+    return PaginatedResponse(items=items, total=total)
 
 
 @router.get("/{source_id}", response_model=SourceDetailResponse)

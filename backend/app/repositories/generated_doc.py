@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.generated_doc import GeneratedDoc
@@ -14,3 +14,7 @@ class GeneratedDocRepository(BaseRepository):
             select(GeneratedDoc).order_by(GeneratedDoc.created_at.desc()).offset(offset).limit(limit)
         )
         return list(result.scalars().all())
+
+    async def count_all(self) -> int:
+        result = await self.session.scalar(select(func.count()).select_from(GeneratedDoc))
+        return result or 0

@@ -40,6 +40,17 @@ class NotificationRepository(BaseRepository):
         result = await self.session.execute(query)
         return result.scalar() or 0
 
+    async def count_all(self, kb_id: uuid.UUID | None = None, unread_only: bool = False) -> int:
+        from sqlalchemy import func
+
+        query = select(func.count()).select_from(Notification)
+        if kb_id:
+            query = query.where(Notification.kb_id == kb_id)
+        if unread_only:
+            query = query.where(Notification.is_read == False)  # noqa: E712
+        result = await self.session.scalar(query)
+        return result or 0
+
     async def mark_all_read(self, kb_id: uuid.UUID | None = None) -> None:
         query = update(Notification).where(Notification.is_read == False).values(is_read=True)  # noqa: E712
         if kb_id:

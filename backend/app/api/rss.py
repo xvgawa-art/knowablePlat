@@ -8,6 +8,7 @@ from app.models.knowledge_base import KnowledgeBase
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.rss_entry import RssEntryRepository
 from app.repositories.rss_feed import RssFeedRepository
+from app.schemas.paginated import PaginatedResponse
 from app.schemas.rss import (
     RssEntryResponse,
     RssFeedCreate,
@@ -42,11 +43,13 @@ async def create_feed(kb_slug: str, data: RssFeedCreate, db: AsyncSession = Depe
     )
 
 
-@router.get("", response_model=list[RssFeedResponse])
+@router.get("", response_model=PaginatedResponse[RssFeedResponse])
 async def list_feeds(kb_slug: str, offset: int = 0, limit: int = 50, db: AsyncSession = Depends(get_db)):
     kb = await _get_kb(kb_slug, db)
     repo = RssFeedRepository(db)
-    return await repo.list_by_kb(kb.id, offset=offset, limit=limit)
+    items = await repo.list_by_kb(kb.id, offset=offset, limit=limit)
+    total = await repo.count_by_kb(kb.id)
+    return PaginatedResponse(items=items, total=total)
 
 
 @router.get("/{feed_id}", response_model=RssFeedResponse)

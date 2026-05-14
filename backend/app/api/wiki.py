@@ -10,6 +10,7 @@ from app.models.wiki_page import WikiPageType
 from app.repositories.activity_log import ActivityLogRepository
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.wiki_page import WikiPageRepository
+from app.schemas.paginated import PaginatedResponse
 from app.schemas.wiki import (
     ActivityLogResponse,
     SemanticSearchRequest,
@@ -32,7 +33,7 @@ async def _get_kb(kb_slug: str, db: AsyncSession) -> KnowledgeBase:
     return kb
 
 
-@router.get("", response_model=list[WikiPageListItem])
+@router.get("", response_model=PaginatedResponse[WikiPageListItem])
 async def list_wiki_pages(
     kb_slug: str,
     page_type: str | None = None,
@@ -45,12 +46,16 @@ async def list_wiki_pages(
     kb = await _get_kb(kb_slug, db)
     wiki_repo = WikiPageRepository(db)
     if source_id:
-        return await wiki_repo.list_by_source(kb.id, source_id)
-    if search and search.strip():
-        return await wiki_repo.search(kb.id, search.strip(), offset=offset, limit=limit)
+        items = await wiki_repo.list_by_source(kb.id, source_id)
+        return PaginatedResponse(items=items, total=len(items))
     ptype = WikiPageType(page_type) if page_type else None
-    pages = await wiki_repo.list_by_kb(kb.id, page_type=ptype, offset=offset, limit=limit)
-    return pages
+    if search and search.strip():
+        items = await wiki_repo.search(kb.id, search.strip(), offset=offset, limit=limit)
+        total = await wiki_repo.count_by_kb(kb.id, page_type=ptype)
+        return PaginatedResponse(items=items, total=total)
+    items = await wiki_repo.list_by_kb(kb.id, page_type=ptype, offset=offset, limit=limit)
+    total = await wiki_repo.count_by_kb(kb.id, page_type=ptype)
+    return PaginatedResponse(items=items, total=total)
 
 
 @router.get("/graph", response_model=WikiGraphData)

@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models.user import User
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.schemas.knowledge_base import KnowledgeBaseCreate, KnowledgeBaseResponse, KnowledgeBaseUpdate
+from app.schemas.paginated import PaginatedResponse
 
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
 
@@ -30,7 +31,7 @@ async def create_kb(
     return await repo.create(**kwargs)
 
 
-@router.get("", response_model=list[KnowledgeBaseResponse])
+@router.get("", response_model=PaginatedResponse[KnowledgeBaseResponse])
 async def list_kbs(
     offset: int = 0,
     limit: int = 50,
@@ -39,8 +40,12 @@ async def list_kbs(
 ):
     repo = _repo(db)
     if user:
-        return await repo.list_by_user(str(user.id), offset=offset, limit=limit)
-    return await repo.list_all(offset=offset, limit=limit)
+        items = await repo.list_by_user(str(user.id), offset=offset, limit=limit)
+        total = await repo.count_by_user(str(user.id))
+    else:
+        items = await repo.list_all(offset=offset, limit=limit)
+        total = await repo.count_all()
+    return PaginatedResponse(items=items, total=total)
 
 
 @router.get("/{kb_slug}", response_model=KnowledgeBaseResponse)

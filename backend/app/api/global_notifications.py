@@ -41,7 +41,8 @@ async def list_all_notifications(
         items = await notif_repo.list_all(unread_only=unread, offset=offset, limit=limit)
     unread_count = await notif_repo.count_unread(kb_id=kb_id)
     enriched = await _enrich_with_kb_slug(items, db)
-    return NotificationListResponse(items=enriched, unread_count=unread_count)
+    total = await notif_repo.count_all(kb_id=kb_id, unread_only=unread)
+    return NotificationListResponse(items=enriched, unread_count=unread_count, total=total)
 
 
 @router.get("/unread-count")

@@ -1,7 +1,7 @@
 import uuid
 from typing import TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import BaseModel
@@ -24,6 +24,15 @@ class BaseRepository:
     async def list_all(self, offset: int = 0, limit: int = 50) -> list[ModelType]:
         result = await self.session.execute(select(self.model).offset(offset).limit(limit))
         return list(result.scalars().all())
+
+    async def count_all(self) -> int:
+        result = await self.session.scalar(select(func.count()).select_from(self.model))
+        return result or 0
+
+    async def delete_many(self, ids: list[uuid.UUID]) -> int:
+        result = await self.session.execute(delete(self.model).where(self.model.id.in_(ids)))
+        await self.session.flush()
+        return result.rowcount
 
     async def create(self, **kwargs) -> ModelType:
         instance = self.model(**kwargs)

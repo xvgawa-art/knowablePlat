@@ -50,6 +50,22 @@ class KnowledgeBaseRepository(BaseRepository):
         )
         return list(result.scalars().all())
 
+    async def count_by_user(self, user_id: str | uuid.UUID) -> int:
+        from sqlalchemy import func, or_
+
+        result = await self.session.scalar(
+            select(func.count())
+            .select_from(KnowledgeBase)
+            .where(
+                or_(
+                    KnowledgeBase.user_id == user_id,
+                    KnowledgeBase.is_public,
+                    KnowledgeBase.is_system,
+                )
+            )
+        )
+        return result or 0
+
     async def refresh_counts(self, kb_id: str) -> None:
         """Update denormalized source_count and wiki_page_count from actual data."""
         from app.models.source import Source
